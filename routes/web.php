@@ -27,9 +27,12 @@ Route::get('/', function () {
     return view('auth.login');
 });
 
+// Driver Document Approval/Rejection (accessible from drivers page)
+Route::patch('/driver-documents/{id}/approve', [DriverDocumentController::class, 'approve'])->name('admin.documents.approve')->middleware('auth');
+Route::patch('/driver-documents/{id}/reject', [DriverDocumentController::class, 'reject'])->name('admin.documents.reject')->middleware('auth');
+
 Route::prefix('admin')->middleware('auth')->group(function () {
-    Route::patch('/driver-documents/{id}/approve', [DriverDocumentController::class, 'approve'])->name('admin.documents.approve');
-    Route::patch('/driver-documents/{id}/reject', [DriverDocumentController::class, 'reject'])->name('admin.documents.reject');
+    // Admin routes can be added here if needed
 });
 
 Route::get('/dashboard', function () {

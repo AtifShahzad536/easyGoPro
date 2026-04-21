@@ -27,7 +27,7 @@
         },
         async approveDocument(docId) {
             try {
-                const response = await fetch('/admin/driver-documents/' + docId + '/approve', {
+                const response = await fetch('/driver-documents/' + docId + '/approve', {
                     method: 'PATCH',
                     headers: {
                         'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
@@ -37,12 +37,20 @@
                 if (response.ok) {
                     const doc = this.selectedDriver.documents.find(d => d.id === docId);
                     if (doc) doc.status = 'verified';
+                    alert('Document approved successfully!');
+                    window.location.reload();
+                } else {
+                    const error = await response.json();
+                    alert('Failed to approve: ' + (error.message || 'Unknown error'));
                 }
-            } catch (e) { console.error('Approve failed:', e); }
+            } catch (e) { 
+                console.error('Approve failed:', e);
+                alert('Error: ' + e.message);
+            }
         },
         async rejectDocument() {
             try {
-                const response = await fetch('/admin/driver-documents/' + this.rejectDocId + '/reject', {
+                const response = await fetch('/driver-documents/' + this.rejectDocId + '/reject', {
                     method: 'PATCH',
                     headers: {
                         'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
@@ -55,8 +63,16 @@
                     const doc = this.selectedDriver.documents.find(d => d.id === this.rejectDocId);
                     if (doc) { doc.status = 'rejected'; doc.rejection_reason = this.rejectionReason; }
                     this.rejectModalOpen = false;
+                    alert('Document rejected successfully!');
+                    window.location.reload();
+                } else {
+                    const error = await response.json();
+                    alert('Failed to reject: ' + (error.message || 'Unknown error'));
                 }
-            } catch (e) { console.error('Reject failed:', e); }
+            } catch (e) { 
+                console.error('Reject failed:', e);
+                alert('Error: ' + e.message);
+            }
         },
         toggleAll() { this.selectAll ? this.selected = [...this.drivers] : this.selected = []; },
         toggleRow(id) {
