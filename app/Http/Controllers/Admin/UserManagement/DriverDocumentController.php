@@ -38,9 +38,13 @@ class DriverDocumentController extends Controller
     {
         $document = DriverDocument::findOrFail($id);
         $document->update([
-            'status' => 'verified', 
+            'status' => 'verified',
             'rejection_reason' => null
         ]);
+
+        if (request()->expectsJson() || request()->ajax()) {
+            return response()->json(['success' => true, 'message' => 'Document approved successfully.']);
+        }
 
         return back()->with('success', 'Document approved successfully.');
     }
@@ -59,6 +63,10 @@ class DriverDocumentController extends Controller
             'status' => 'rejected',
             'rejection_reason' => $request->reason
         ]);
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json(['success' => true, 'message' => 'Document rejected.']);
+        }
 
         return back()->with('success', 'Document rejected.');
     }

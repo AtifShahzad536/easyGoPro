@@ -33,11 +33,19 @@ class RideBookingController extends Controller
             // Destination location
             'destination.latitude' => 'required|numeric|between:-90,90',
             'destination.longitude' => 'required|numeric|between:-180,180',
+            'distance' => 'required|numeric|',
+            'time' =>'required|numeric|',
             
             // Optional stops (max 4)
             'stops' => 'nullable|array|max:4',
             'stops.*.latitude' => 'required_with:stops|numeric|between:-90,90',
             'stops.*.longitude' => 'required_with:stops|numeric|between:-180,180',
+        ],[
+
+            'distance.numeric' => 'Distance must be a valid number',
+            'time.numeric' => 'Time must be a valid number',
+            'stops.max' => 'Maximum 4 stops allowed',
+
         ]);
 
         if ($validator->fails()) {
@@ -49,24 +57,17 @@ class RideBookingController extends Controller
         }
 
         // Calculate distance (mock for now - integrate Google Distance Matrix API)
-        $distanceKm = $this->calculateDistance(
-            $request->pickup['latitude'],
-            $request->pickup['longitude'],
-            $request->destination['latitude'],
-            $request->destination['longitude']
-        );
-
         // Add stops distance
         $stopsCount = $request->has('stops') ? count($request->stops) : 0;
         
         // Calculate fares for all vehicle types
-        $estimates = $this->getAllVehicleEstimates($distanceKm, $stopsCount);
+        $estimates = $this->getAllVehicleEstimates($request->distance, $stopsCount);
 
         return response()->json([
             'status' => 'success',
             'data' => [
-                'distance_km' => round($distanceKm, 2),
-                'duration_minutes' => round($distanceKm * 3), // Mock: 3 min per km
+                'distance_km' => round($request->distance, 2),
+                'duration_minutes' => round($request->distance * 3), // Mock: 3 min per km
                 'total_stops' => $stopsCount,
                 'max_stops_allowed' => 4,
                 'vehicle_options' => $estimates,
@@ -75,37 +76,52 @@ class RideBookingController extends Controller
     }
 
     /**
-     * POST /api/v1/rider/book-ride
-     * Book a ride with pickup, destination and optional stops (max 4)
+     * POST /api/v1/rider/standard-book-ride
+     * Book a standard ride with pickup, destination and optional stops (max 4)
      */
-    public function bookRide(Request $request): JsonResponse
+    public function standardBookRide(Request $request): JsonResponse
     {
         $rider = auth()->user();
 
         $validator = Validator::make($request->all(), [
             // Pickup location
             'pickup.place_name' => 'required|string|max:255',
-            'pickup.address' => 'required|string|max:500',
             'pickup.latitude' => 'required|numeric|between:-90,90',
             'pickup.longitude' => 'required|numeric|between:-180,180',
             
             // Destination location
             'destination.place_name' => 'required|string|max:255',
-            'destination.address' => 'required|string|max:500',
             'destination.latitude' => 'required|numeric|between:-90,90',
             'destination.longitude' => 'required|numeric|between:-180,180',
+            
+            // Ride distance and time
+            'distance' => 'required|numeric|min:0',
+            'duration' => 'required|numeric|min:0',
             
             // Optional stops (max 4)
             'stops' => 'nullable|array|max:4',
             'stops.*.place_name' => 'required_with:stops|string|max:255',
-            'stops.*.address' => 'required_with:stops|string|max:500',
             'stops.*.latitude' => 'required_with:stops|numeric|between:-90,90',
             'stops.*.longitude' => 'required_with:stops|numeric|between:-180,180',
             
             // Ride details
-            'ride_type' => 'required|in:car_pool,economy,business,auto,bike',
-            'payment_method' => 'required|in:cash,wallet,card',
-            'scheduled_at' => 'nullable|date|after:now',
+            'ride_type' => 'required|in:bike,auto,economy,business,car_pool',
+            'payment_method' => 'required|in:cash',
+            'estimate_fare' => 'required|numeric|min:0',
+        ], [
+            'pickup.place_name.required' => 'Pickup place name is required',
+            'pickup.latitude.required' => 'Pickup latitude is required',
+            'pickup.longitude.required' => 'Pickup longitude is required',
+            'destination.place_name.required' => 'Destination place name is required',
+            'destination.latitude.required' => 'Destination latitude is required',
+            'destination.longitude.required' => 'Destination longitude is required',
+            'distance.required' => 'Distance is required',
+            'duration.required' => 'Duration is required',
+            'ride_type.required' => 'Ride type is required',
+            'ride_type.in' => 'Invalid ride type. Must be bike, auto, economy, business, or car_pool',
+            'payment_method.required' => 'Payment method is required',
+            'estimate_fare.required' => 'Estimated fare is required',
+            'stops.max' => 'Maximum 4 stops allowed',
         ]);
 
         if ($validator->fails()) {
@@ -123,18 +139,17 @@ class RideBookingController extends Controller
                     'rider_id' => $rider->id,
                     'driver_id' => null, // Will be assigned later
                     'pickup_place_name' => $request->pickup['place_name'],
-                    'pickup_address' => $request->pickup['address'],
                     'pickup_lat' => $request->pickup['latitude'],
                     'pickup_lng' => $request->pickup['longitude'],
                     'destination_place_name' => $request->destination['place_name'],
-                    'destination_address' => $request->destination['address'],
                     'destination_lat' => $request->destination['latitude'],
                     'destination_lng' => $request->destination['longitude'],
                     'status' => 'searching',
                     'ride_type' => $request->ride_type,
                     'payment_method' => $request->payment_method,
-                    'scheduled_at' => $request->scheduled_at,
-                    'estimated_fare' => $this->calculateFare($request),
+                    'estimated_fare' => $request->estimate_fare,
+                    'distance_km' => $request->distance,
+                    'duration_minutes' => $request->duration,
                 ]);
 
                 // Add stops if any
@@ -144,7 +159,6 @@ class RideBookingController extends Controller
                             'ride_id' => $ride->id,
                             'stop_order' => $index + 1,
                             'place_name' => $stop['place_name'],
-                            'address' => $stop['address'],
                             'latitude' => $stop['latitude'],
                             'longitude' => $stop['longitude'],
                             'status' => 'pending',
@@ -155,6 +169,9 @@ class RideBookingController extends Controller
                 // Load stops relation
                 $ride->load('stops');
 
+                // Broadcast the ride request to drivers
+                \App\Events\RideRequested::dispatch($ride);
+
                 return response()->json([
                     'status' => 'success',
                     'message' => 'Ride booked successfully',
@@ -164,7 +181,7 @@ class RideBookingController extends Controller
                         'total_stops' => $ride->stops->count(),
                         'max_stops' => 4,
                         'status' => 'searching_driver',
-                        'estimated_fare' => $ride->fare,
+                        'estimated_fare' => $ride->estimated_fare,
                     ],
                 ], 201);
             });
@@ -174,6 +191,73 @@ class RideBookingController extends Controller
                 'message' => 'Failed to book ride: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * GET /api/v1/rider/rides
+     * Get all rides for rider
+     */
+    public function getRides(Request $request): JsonResponse
+    {
+        $rider = auth()->user();
+
+        $status = $request->query('status'); // Optional: filter by status
+
+        $query = Ride::with(['driver', 'stops'])
+            ->where('rider_id', $rider->id);
+
+        if ($status) {
+            $query->where('status', $status);
+        }
+
+        $rides = $query->latest()->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $rides,
+        ]);
+    }
+
+    /**
+     * GET /api/v1/rider/rides/active
+     * Get active ride for rider
+     */
+    public function getActiveRide(Request $request): JsonResponse
+    {
+        $rider = auth()->user();
+
+        $ride = Ride::with(['driver', 'stops'])
+            ->where('rider_id', $rider->id)
+            ->whereIn('status', ['searching', 'accepted', 'ongoing'])
+            ->first();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'ride' => $ride,
+                'has_active_ride' => $ride !== null,
+            ],
+        ]);
+    }
+
+    /**
+     * GET /api/v1/rider/rides/history
+     * Get rider's ride history (completed/cancelled)
+     */
+    public function getRideHistory(Request $request): JsonResponse
+    {
+        $rider = auth()->user();
+
+        $rides = Ride::with(['driver', 'stops'])
+            ->where('rider_id', $rider->id)
+            ->whereIn('status', ['completed', 'cancelled'])
+            ->latest()
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $rides,
+        ]);
     }
 
     /**
@@ -223,6 +307,9 @@ class RideBookingController extends Controller
         }
 
         $ride->update(['status' => 'cancelled']);
+
+        // Broadcast cancellation so driver app removes it
+        \App\Events\RideCancelled::dispatch($ride);
 
         return response()->json([
             'status' => 'success',
@@ -279,7 +366,7 @@ class RideBookingController extends Controller
                 'capacity' => 1,
                 'base_fare' => 30,
                 'per_km_rate' => 8,
-                'image' => '/images/vehicles/bike.png',
+               
             ],
             [
                 'type' => 'auto',
@@ -287,7 +374,7 @@ class RideBookingController extends Controller
                 'capacity' => 3,
                 'base_fare' => 50,
                 'per_km_rate' => 15,
-                'image' => '/images/vehicles/auto.png',
+                
             ],
             [
                 'type' => 'economy',
@@ -295,7 +382,7 @@ class RideBookingController extends Controller
                 'capacity' => 4,
                 'base_fare' => 80,
                 'per_km_rate' => 25,
-                'image' => '/images/vehicles/economy.png',
+                
             ],
             [
                 'type' => 'business',
@@ -303,7 +390,8 @@ class RideBookingController extends Controller
                 'capacity' => 4,
                 'base_fare' => 150,
                 'per_km_rate' => 40,
-                'image' => '/images/vehicles/comfort.png',
+           
+
             ],
             [
                 'type' => 'car_pool',
@@ -311,7 +399,7 @@ class RideBookingController extends Controller
                 'capacity' => 4,
                 'base_fare' => 40,
                 'per_km_rate' => 12,
-                'image' => '/images/vehicles/carpool.png',
+                
             ],
         ];
 
@@ -329,7 +417,7 @@ class RideBookingController extends Controller
                 'type' => $vehicle['type'],
                 'name' => $vehicle['name'],
                 'capacity' => $vehicle['capacity'],
-                'image' => $vehicle['image'],
+                
                 'fare' => [
                     'estimated' => $finalFare,
                     'base_fare' => $vehicle['base_fare'],

@@ -70,12 +70,27 @@ class ApiAuthController extends Controller
             $model = $request->role === 'driver' ? Driver::class : Rider::class;
 
             $user = $model::where('mobile_number', $request->mobile_number)->first();
-
+            
             if (!$user) {
+                    return response()->json([
+                        'status'  => 'error',
+                        'message' => 'Account not found. Please register first.',
+                    ], 404);
+            }
+            // Check if driver is suspended
+            if ($request->role === 'driver' && $user->status === 'suspended') {
                 return response()->json([
                     'status'  => 'error',
-                    'message' => 'Account not found. Please register first.',
-                ], 404);
+                    'message' => 'Your account has been suspended. Please contact support.',
+                ], 403);
+            }
+
+            // Check if rider is banned
+            if ($request->role === 'rider' && $user->status === 'banned') {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Your account has been banned. Please contact support.',
+                ], 403);
             }
 
             // Set driver status to online when logging in
@@ -240,6 +255,7 @@ class ApiAuthController extends Controller
                     'token_type'   => 'Bearer',
                     'role'         => 'driver',
                     'user'         => $userData,
+                    'vehicle'      => $vehicle,
                     'registration_summary' => [
                         'driver_id'          => $driver->id,
                         'vehicle_id'         => $vehicle->id,

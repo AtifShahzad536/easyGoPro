@@ -28,8 +28,8 @@ Route::get('/', function () {
 });
 
 // Driver Document Approval/Rejection (accessible from drivers page)
-Route::patch('/driver-documents/{id}/approve', [DriverDocumentController::class, 'approve'])->name('admin.documents.approve')->middleware('auth');
-Route::patch('/driver-documents/{id}/reject', [DriverDocumentController::class, 'reject'])->name('admin.documents.reject')->middleware('auth');
+Route::post('/driver-documents/{id}/approve', [DriverDocumentController::class, 'approve'])->name('admin.documents.approve')->middleware('auth');
+Route::post('/driver-documents/{id}/reject', [DriverDocumentController::class, 'reject'])->name('admin.documents.reject')->middleware('auth');
 
 Route::prefix('admin')->middleware('auth')->group(function () {
     // Admin routes can be added here if needed
@@ -47,6 +47,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/riders', [RiderController::class, 'index'])->name('riders.index');
     Route::patch('/riders/{rider}/status', [RiderController::class, 'updateStatus'])->name('riders.status');
     Route::get('/drivers', [DriverController::class, 'index'])->name('drivers.index');
+    Route::get('/drivers/{driver}', [DriverController::class, 'show'])->name('drivers.show');
+    Route::patch('/drivers/{driver}', [DriverController::class, 'update'])->name('drivers.update');
+    Route::post('/drivers/{driver}/suspend', [DriverController::class, 'suspend'])->name('drivers.suspend');
+    Route::post('/drivers/{driver}/activate', [DriverController::class, 'activate'])->name('drivers.activate');
     Route::get('/live-rides', [LiveRideController::class, 'index'])->name('live-rides.index');
     Route::get('/ride-history', [RideHistoryController::class, 'index'])->name('ride-history.index');
     Route::get('/scheduled-rides', [ScheduledRideController::class, 'index'])->name('scheduled-rides.index');

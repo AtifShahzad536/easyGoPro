@@ -22,6 +22,7 @@ class DriverProfileController extends Controller
     public function getProfile(Request $request): JsonResponse
     {
         $driver = $request->user();
+        $vehicle = $driver->vehicle;
 
         return response()->json([
             'status' => 'success',
@@ -40,6 +41,17 @@ class DriverProfileController extends Controller
                 'is_available' => $driver->is_available,
                 'created_at' => $driver->created_at?->toDateTimeString(),
             ],
+            'vehicle' => $vehicle ? [
+                'id' => $vehicle->id,
+                'make' => $vehicle->make,
+                'model' => $vehicle->model,
+                'year' => $vehicle->year,
+                'color' => $vehicle->color,
+                'plate_number' => $vehicle->plate_number,
+                'is_active' => $vehicle->is_active,
+                'type' => $vehicle->type,
+                'updated_at' => $vehicle->updated_at->toDateTimeString(),
+            ] : null,
         ]);
     }
 
@@ -93,6 +105,7 @@ class DriverProfileController extends Controller
 
         // Re-fetch fresh instance from database
         $driver = Driver::find($driverId);
+        $vehicle = $driver->vehicle;
 
         // Handle profile photo upload
         if ($request->hasFile('profile_photo')) {
@@ -133,6 +146,17 @@ class DriverProfileController extends Controller
                 'date_of_birth' => $driver->date_of_birth,
                 'updated_at' => $driver->updated_at->toDateTimeString(),
             ],
+            'vehicle' => $vehicle ? [
+                'id' => $vehicle->id,
+                'make' => $vehicle->make,
+                'type' => $vehicle->type,
+                'model' => $vehicle->model,
+                'year' => $vehicle->year,
+                'color' => $vehicle->color,
+                'plate_number' => $vehicle->plate_number,
+                'is_active' => $vehicle->is_active,
+                'updated_at' => $vehicle->updated_at->toDateTimeString(),
+            ] : null,
         ]);
     }
 }

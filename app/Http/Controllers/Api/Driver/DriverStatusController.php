@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Throwable;
 
-class DriverStatusApiController extends Controller
+class DriverStatusController extends Controller
 {
     /**
      * Update driver status (online/offline/busy etc.)

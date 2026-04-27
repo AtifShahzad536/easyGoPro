@@ -30,22 +30,25 @@ class DriverController extends Controller
     }
 
     /**
-     * Update driver status.
+     * Suspend driver.
      */
-    public function updateStatus(Request $request, Driver $driver)
+    public function suspend(Driver $driver)
     {
-        $request->validate([
-            'status' => 'required|in:active,inactive,suspended,banned'
-        ]);
-
-        $driver->status = $request->status;
+        $driver->status = 'suspended';
         $driver->save();
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Driver status updated successfully',
-            'driver' => $driver
-        ]);
+        return redirect()->route('drivers.index')->with('success', 'Driver suspended successfully.');
+    }
+
+    /**
+     * Activate driver.
+     */
+    public function activate(Driver $driver)
+    {
+        $driver->status = 'offline';
+        $driver->save();
+
+        return redirect()->route('drivers.index')->with('success', 'Driver activated successfully.');
     }
 
     /**
@@ -60,10 +63,49 @@ class DriverController extends Controller
         $driver->kyc_status = $request->kyc_status;
         $driver->save();
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'KYC status updated successfully',
-            'driver' => $driver
-        ]);
+        return redirect()->route('drivers.index')->with('success', 'KYC status updated successfully.');
+    }
+
+    /**
+     * Update driver details via AJAX.
+     */
+    public function update(Request $request, Driver $driver)
+    {
+        try {
+            $request->validate([
+                'full_name' => 'required|string|max:255',
+                'mobile_number' => 'required|string|max:20',
+                'status' => 'required|in:online,offline,on_trip,suspended',
+                'kyc_status' => 'required|in:pending,in_review,approved,rejected',
+            ]);
+
+            $driver->full_name = $request->full_name;
+            $driver->mobile_number = $request->mobile_number;
+            $driver->status = $request->status;
+            $driver->kyc_status = $request->kyc_status;
+            $driver->save();
+
+            // Update vehicle model if provided
+            if ($request->has('vehicle_model') && $driver->vehicle) {
+                $driver->vehicle->model = $request->vehicle_model;
+                $driver->vehicle->save();
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Driver updated successfully',
+                'driver' => $driver->load(['vehicle'])
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Database error: ' . $e->getMessage()
+            ], 500);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 }

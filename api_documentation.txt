@@ -1148,10 +1148,393 @@
     }
 
 ================================================================================
-                    RIDE BOOKING APIS (NEW)
+                    STANDARD RIDE BOOKING APIS (NEW)
 ================================================================================
 
-36. ESTIMATE FARE (Get all vehicle options with prices)
+36. STANDARD BOOK RIDE (With pickup, destination, stops)
+    POST http://192.168.1.37:8000/api/v1/rider/standard-book-ride
+
+    Headers:
+    Authorization: Bearer {rider_token}
+    Content-Type: application/json
+    Accept: application/json
+
+    Request: {
+      "pickup": {
+        "place_name": "Lahore Railway Station",
+        "latitude": 31.5546,
+        "longitude": 74.3572
+      },
+      "destination": {
+        "place_name": "Allama Iqbal Airport",
+        "latitude": 31.5216,
+        "longitude": 74.4036
+      },
+      "distance": 15.5,
+      "duration": 25,
+      "stops": [
+        {
+          "place_name": "Gaddafi Stadium",
+          "latitude": 31.5149,
+          "longitude": 74.3572
+        }
+      ],
+      "ride_type": "economy",          // bike, auto, economy, business, car_pool
+      "payment_method": "cash",        // cash
+      "estimate_fare": 450
+    }
+
+    Response: {
+      "status": "success",
+      "message": "Ride booked successfully",
+      "data": {
+        "ride_id": 5,
+        "ride": {
+          "id": 5,
+          "rider_id": 3,
+          "driver_id": null,
+          "pickup_place_name": "Lahore Railway Station",
+          "pickup_lat": "31.55460000",
+          "pickup_lng": "74.35720000",
+          "destination_place_name": "Allama Iqbal Airport",
+          "destination_lat": "31.52160000",
+          "destination_lng": "74.40360000",
+          "status": "searching",
+          "ride_type": "economy",
+          "payment_method": "cash",
+          "estimated_fare": "450.00",
+          "distance_km": "15.50",
+          "duration_minutes": 25,
+          "stops": []
+        },
+        "total_stops": 1,
+        "max_stops": 4,
+        "status": "searching_driver",
+        "estimated_fare": 450
+      }
+    }
+
+--------------------------------------------------------------------------------
+
+37. GET RIDER RIDES (All rides with optional status filter)
+    GET http://192.168.1.37:8000/api/v1/rider/rides?status=searching
+
+    Headers:
+    Authorization: Bearer {rider_token}
+    Accept: application/json
+
+    Query Parameters (optional):
+    - status: Filter by status (searching, accepted, ongoing, completed, cancelled)
+
+    Response: {
+      "status": "success",
+      "data": {
+        "current_page": 1,
+        "data": [
+          {
+            "id": 5,
+            "rider_id": 3,
+            "driver_id": 2,
+            "pickup_place_name": "Lahore Railway Station",
+            "destination_place_name": "Allama Iqbal Airport",
+            "status": "accepted",
+            "ride_type": "economy",
+            "estimated_fare": "450.00",
+            ...
+          }
+        ],
+        "total": 10
+      }
+    }
+
+--------------------------------------------------------------------------------
+
+38. GET RIDER ACTIVE RIDE (Current active ride)
+    GET http://192.168.1.37:8000/api/v1/rider/rides/active
+
+    Headers:
+    Authorization: Bearer {rider_token}
+    Accept: application/json
+
+    Response: {
+      "status": "success",
+      "data": {
+        "ride": {
+          "id": 5,
+          "rider_id": 3,
+          "driver_id": 2,
+          "status": "ongoing",
+          "driver": {...},
+          "stops": [...]
+        },
+      }
+    }
+
+--------------------------------------------------------------------------------
+
+38C. LISTEN FOR REAL-TIME RIDE UPDATES (WEBSOCKET / REVERB)
+    Channel (Private): private-rider.{rider_id}
+    Event: RideStatusUpdated
+    
+    Description:
+    After booking a ride, the Rider app should subscribe to this websocket channel using their token.
+    Whenever the driver accepts, starts, completes, or cancels the ride, this event fires instantly.
+    The response payload contains the entire ride object (including driver details, so you know who accepted it).
+    
+    Sample Websocket Event Payload (JSON):
+    {
+      "ride": {
+        "id": 5,
+        "rider_id": 3,
+        "driver_id": 10,
+        "status": "accepted",  // or "ongoing", "completed", "cancelled"
+        "ride_type": "economy",
+        "driver": {
+          "id": 10,
+          "full_name": "Ali Khan",
+          "mobile_number": "03001234567",
+          "profile_photo_url": "http://..."
+        },
+        "stops": [...]
+      }
+    }
+
+================================================================================
+                    DRIVER RIDE MANAGEMENT APIS (NEW)
+================================================================================
+
+38A. LISTEN FOR INCOMING RIDES (WEBSOCKET / REVERB)
+    Channel (Private): private-available-rides
+    Event: StandardRideCreated
+    
+    Description:
+    Use Laravel Echo (or equivalent Flutter WS client) to connect to the Reverb server.
+    Authenticate on the private channel using your driver token.
+    The driver app listens on this WebSocket channel to instantly receive new rides. 
+    Upon receiving:
+    - Display the ride on screen.
+    - Start a 20-second timer.
+    - If accepted: Call PATCH /api/v1/driver/rides/{id}/accept
+    - If rejected or 20s passes: Dismiss the ride card from UI locally (no backend API call needed).
+    
+    Sample Websocket Event Payload (JSON):
+    {
+      "ride": {
+        "id": 5,
+        "rider_id": 3,
+        "driver_id": null,
+        "pickup_place_name": "Lahore Railway Station",
+        "pickup_lat": "31.55460000",
+        "pickup_lng": "74.35720000",
+        "destination_place_name": "Allama Iqbal Airport",
+        "status": "searching",
+        "ride_type": "economy",
+        "estimated_fare": "450.00",
+        "stops": []
+      }
+    }
+
+--------------------------------------------------------------------------------
+
+38B. RIDE CANCELLED BY RIDER REAL-TIME (WEBSOCKET / REVERB)
+    Channel (Private): private-available-rides
+    Event: StandardRideCancelled
+    
+    Description:
+    If the Rider cancels the ride while drivers are currently looking at the incoming standard ride screen,
+    this event will fire so the driver app can instantly remove it from the screen.
+    
+    Sample Websocket Event Payload (JSON):
+    {
+      "ride_id": 5
+    }
+
+--------------------------------------------------------------------------------
+
+39. GET AVAILABLE RIDES (Driver can see rides searching for drivers)
+    GET http://192.168.1.37:8000/api/v1/driver/rides/available
+
+    Headers:
+    Authorization: Bearer {driver_token}
+    Accept: application/json
+
+    Response: {
+      "status": "success",
+      "data": {
+        "rides": [
+          {
+            "id": 5,
+            "rider_id": 3,
+            "pickup_place_name": "Lahore Railway Station",
+            "destination_place_name": "Allama Iqbal Airport",
+            "status": "searching",
+            "ride_type": "economy",
+            "estimated_fare": "450.00",
+            "rider": {
+              "id": 3,
+              "full_name": "Ali Khan",
+              "mobile_number": "03001234567"
+            }
+          }
+        ],
+        "count": 3
+      }
+    }
+
+--------------------------------------------------------------------------------
+
+40. GET DRIVER CURRENT RIDE
+    GET http://192.168.1.37:8000/api/v1/driver/rides/current
+
+    Headers:
+    Authorization: Bearer {driver_token}
+    Accept: application/json
+
+    Response: {
+      "status": "success",
+      "data": {
+        "ride": {
+          "id": 5,
+          "rider_id": 3,
+          "driver_id": 2,
+          "status": "ongoing",
+          "rider": {...},
+          "stops": [...]
+        },
+        "has_active_ride": true
+      }
+    }
+
+--------------------------------------------------------------------------------
+
+41. GET DRIVER RIDE HISTORY
+    GET http://192.168.1.37:8000/api/v1/driver/rides/history
+
+    Headers:
+    Authorization: Bearer {driver_token}
+    Accept: application/json
+
+    Response: {
+      "status": "success",
+      "data": {
+        "current_page": 1,
+        "data": [
+          {
+            "id": 4,
+            "status": "completed",
+            "rider": {...},
+            ...
+          }
+        ],
+        "total": 50
+      }
+    }
+
+--------------------------------------------------------------------------------
+
+42. ACCEPT RIDE (Driver accepts a ride)
+    PATCH http://192.168.1.37:8000/api/v1/driver/rides/{rideId}/accept
+
+    Headers:
+    Authorization: Bearer {driver_token}
+    Accept: application/json
+
+    Path Parameter:
+    - rideId: ID of the ride to accept
+
+    Response: {
+      "status": "success",
+      "message": "Ride accepted successfully",
+      "data": {
+        "ride": {
+          "id": 5,
+          "rider_id": 3,
+          "driver_id": 2,
+          "status": "accepted",
+          "accepted_at": "2026-04-24T05:30:00.000000Z",
+          ...
+        }
+      }
+    }
+
+--------------------------------------------------------------------------------
+
+43. CANCEL RIDE (Driver cancels a ride)
+    PATCH http://192.168.1.37:8000/api/v1/driver/rides/{rideId}/cancel
+
+    Headers:
+    Authorization: Bearer {driver_token}
+    Content-Type: application/json
+    Accept: application/json
+
+    Path Parameter:
+    - rideId: ID of the ride to cancel
+
+    Request Body (optional):
+    {
+      "reason": "Car broke down"
+    }
+
+    Response: {
+      "status": "success",
+      "message": "Ride cancelled successfully"
+    }
+
+--------------------------------------------------------------------------------
+
+44. START RIDE (Driver starts the ride - arrives at pickup)
+    PATCH http://192.168.1.37:8000/api/v1/driver/rides/{rideId}/start
+
+    Headers:
+    Authorization: Bearer {driver_token}
+    Accept: application/json
+
+    Path Parameter:
+    - rideId: ID of the ride to start
+
+    Response: {
+      "status": "success",
+      "message": "Ride started successfully",
+      "data": {
+        "ride": {
+          "id": 5,
+          "status": "ongoing",
+          "started_at": "2026-04-24T05:35:00.000000Z",
+          ...
+        }
+      }
+    }
+
+--------------------------------------------------------------------------------
+
+45. COMPLETE RIDE (Driver completes the ride - drops off rider)
+    PATCH http://192.168.1.37:8000/api/v1/driver/rides/{rideId}/complete
+
+    Headers:
+    Authorization: Bearer {driver_token}
+    Accept: application/json
+
+    Path Parameter:
+    - rideId: ID of the ride to complete
+
+    Response: {
+      "status": "success",
+      "message": "Ride completed successfully",
+      "data": {
+        "ride": {
+          "id": 5,
+          "status": "completed",
+          "completed_at": "2026-04-24T05:50:00.000000Z",
+          ...
+        }
+      }
+    }
+
+================================================================================
+                    ESTIMATE FARE APIS
+================================================================================
+
+46. ESTIMATE FARE (Get all vehicle options with prices)
     POST http://192.168.1.37:8000/api/v1/rider/estimate-fare
     
     Headers:
@@ -1340,7 +1723,8 @@
 5. All amounts in PKR (Pakistani Rupees)
 6. Carpool rides require driver to be verified before publishing
 7. Time format is 24-hour (HH:MM)
+8. Standard ride booking uses PATCH for driver actions (accept, cancel, start, complete)
 
 ================================================================================
-                        LAST UPDATED: April 16, 2025
+                        LAST UPDATED: April 24, 2026
 ================================================================================

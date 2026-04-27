@@ -9,6 +9,7 @@ use App\Http\Controllers\Auth\Api\DriverDocumentController;
 use App\Http\Controllers\Api\Driver\DriverStatisticController;
 use App\Http\Controllers\Api\Driver\DriverStatusController;
 use App\Http\Controllers\Api\Driver\DriverProfileController;
+use App\Http\Controllers\Api\Driver\DriverRideController;
 
 // Rider API Controllers
 use App\Http\Controllers\Api\Rider\RiderProfileController;
@@ -99,6 +100,19 @@ Route::middleware('auth:sanctum')->prefix('v1/driver')->group(function () {
         Route::post('/cancel/{rideId}', [CarpoolController::class, 'cancelRide']);
         Route::delete('/delete/{rideId}', [CarpoolController::class, 'deleteRide']);
     });
+
+    // ─────────────────────────────────────────────────────────────────
+    // Standard Ride Management
+    // ─────────────────────────────────────────────────────────────────
+    Route::prefix('/rides')->group(function () {
+        Route::get('/available', [DriverRideController::class, 'getAvailableRides']);
+        Route::get('/current', [DriverRideController::class, 'getCurrentRide']);
+        Route::get('/history', [DriverRideController::class, 'getRideHistory']);
+        Route::patch('/{rideId}/accept', [DriverRideController::class, 'acceptRide']);
+        Route::patch('/{rideId}/cancel', [DriverRideController::class, 'cancelRide']);
+        Route::patch('/{rideId}/start', [DriverRideController::class, 'startRide']);
+        Route::patch('/{rideId}/complete', [DriverRideController::class, 'completeRide']);
+    });
 });
 
 
@@ -154,7 +168,10 @@ Route::middleware('auth:sanctum')->prefix('v1/rider')->group(function () {
     // Ride Booking (with Stops - Max 4)
     // ─────────────────────────────────────────────────────────────────
     Route::post('/estimate-fare', [RideBookingController::class, 'estimateFare']);
-    Route::post('/book-ride', [RideBookingController::class, 'bookRide']);
+    Route::post('/standard-book-ride', [RideBookingController::class, 'standardBookRide']);
+    Route::get('/rides', [RideBookingController::class, 'getRides']);
+    Route::get('/rides/active', [RideBookingController::class, 'getActiveRide']);
+    Route::get('/rides/history', [RideBookingController::class, 'getRideHistory']);
     Route::get('/rides/{rideId}', [RideBookingController::class, 'getRideDetails']);
     Route::post('/rides/{rideId}/cancel', [RideBookingController::class, 'cancelRide']);
 });
