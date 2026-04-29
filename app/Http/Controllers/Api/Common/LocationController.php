@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Throwable;
 
-class UserLocationController extends Controller
+class LocationController extends Controller
 {
     /**
      * Update user location (Driver or Rider)

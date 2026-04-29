@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Throwable;
 
-class CarpoolRideController extends Controller
+class CarpoolController extends Controller
 {
     /**
      * Publish a new carpool ride

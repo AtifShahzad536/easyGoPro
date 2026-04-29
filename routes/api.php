@@ -4,6 +4,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\ApiAuthController;
 use App\Http\Controllers\Auth\Api\DriverDocumentController;
+use Illuminate\Support\Facades\Broadcast;
+
+// Register broadcasting routes with Sanctum middleware
+Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
 // Driver API Controllers
 use App\Http\Controllers\Api\Driver\DriverStatisticController;
