@@ -23,6 +23,11 @@ class RiderProfileController extends Controller
     {
         $rider = $request->user();
 
+        // Calculate real-time average rating from completed rides
+        $averageRating = \App\Models\Ride::where('rider_id', $rider->id)
+            ->whereNotNull('rider_rating')
+            ->avg('rider_rating') ?? 0;
+
         // Hide sensitive fields including display_name
         $profile = [
             'id' => $rider->id,
@@ -32,6 +37,7 @@ class RiderProfileController extends Controller
             'profile_photo' => $rider->profile_photo ? asset('storage/' . $rider->profile_photo) : null,
             'gender' => $rider->gender,
             'date_of_birth' => $rider->date_of_birth,
+            'rating' => round($averageRating, 2),
             'is_active' => $rider->is_active,
             'created_at' => $rider->created_at?->toDateTimeString(),
         ];
@@ -135,6 +141,7 @@ class RiderProfileController extends Controller
                 'profile_photo' => $rider->profile_photo ? asset('storage/' . $rider->profile_photo) : null,
                 'gender' => $rider->gender,
                 'date_of_birth' => $rider->date_of_birth,
+                'rating' => round(\App\Models\Ride::where('rider_id', $rider->id)->whereNotNull('rider_rating')->avg('rider_rating') ?? 0, 2),
                 'updated_at' => $rider->updated_at->toDateTimeString(),
             ],
         ]);

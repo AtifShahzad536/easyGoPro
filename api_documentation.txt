@@ -1,6 +1,6 @@
 ================================================================================
                          EASYGO API DOCUMENTATION
-                         Base URL: http://192.168.1.37:8000
+                         Base URL: http://172.20.10.2:8000
 ================================================================================
 
 ================================================================================
@@ -499,11 +499,27 @@
     Response: {
       "status": "success",
       "data": {
-        "total_trips": 150,
-        "total_earnings": 45000.00,
-        "wallet_balance": 12000.00,
-        "average_rating": 4.8,
-        "completion_rate": 95.5
+        "earnings": {
+            "total_earnings": 45000.00,
+            "wallet_balance": 12000.00,
+            "total_withdrawn": 33000.00,
+            "available_balance": 12000.00
+        },
+        "trips": {
+            "total_trips": 150,
+            "completed_trips": 142,
+            "cancelled_trips": 8,
+            "completion_rate": 94.67,
+            "cancellation_rate": 5.33
+        },
+        "rating": {
+            "average_rating": 4.85  // Calculated real-time from rides table
+        },
+        "activity": {
+            "total_online_minutes": 5400,
+            "total_online_hours": 90,
+            "last_trip_at": "2025-04-15 12:30:00"
+        }
       }
     }
 
@@ -633,9 +649,10 @@
         "full_name": "Ali Khan",
         "mobile_number": "03001234567",
         "email": "ali@example.com",
-        "profile_photo": "http://192.168.1.37:8000/storage/profile_photos/riders/xxxxx.jpg",
+        "profile_photo": "http://172.20.10.2:8000/storage/profile_photos/riders/xxxxx.jpg",
         "gender": "male",
         "date_of_birth": "1995-05-15",
+        "rating": 4.92,  // Overall rider rating (real-time average)
         "is_active": true,
         "created_at": "2025-04-01 10:00:00"
       }
@@ -1700,6 +1717,116 @@
     }
 
 ================================================================================
+                        RIDER STATISTICS APIS
+================================================================================
+
+47. GET RIDER STATISTICS
+    GET http://172.20.10.2:8000/api/v1/rider/statistics
+    
+    Headers:
+    Authorization: Bearer {rider_token}
+    Accept: application/json
+    
+    Response: {
+      "status": "success",
+      "data": {
+        "spending": {
+            "total_spent": 5000.00,
+            "wallet_balance": 150.00,
+            "total_refunded": 0.00
+        },
+        "trips": {
+            "total_trips": 12,
+            "completed_trips": 10,
+            "cancelled_trips": 2,
+            "completion_rate": 83.33
+        },
+        "rating": {
+            "average_rating": 4.92  // Calculated real-time from rides table
+        },
+        "last_ride_at": "2026-04-29 10:00:00",
+        "updated_at": "2026-04-29 12:00:00"
+      }
+    }
+
+--------------------------------------------------------------------------------
+
+48. GET RIDER DASHBOARD SUMMARY
+    GET http://172.20.10.2:8000/api/v1/rider/statistics/dashboard
+    
+    Headers:
+    Authorization: Bearer {rider_token}
+    Accept: application/json
+    
+    Response: {
+      "status": "success",
+      "data": {
+        "quick_stats": {
+            "total_trips": 12,
+            "wallet_balance": 150.00,
+            "average_rating": 4.92
+        },
+        "rider_info": {
+            "full_name": "Ali Khan",
+            "mobile_number": "03001234567",
+            "is_active": true
+        }
+      }
+    }
+
+================================================================================
+                        RIDE RATING APIS (NEW)
+================================================================================
+
+49. RATE DRIVER (By Rider)
+    PATCH http://172.20.10.2:8000/api/v1/rider/rides/{rideId}/rate
+    
+    Headers:
+    Authorization: Bearer {rider_token}
+    Content-Type: application/json
+    
+    Body:
+    {
+      "rating": 5,          // Required, integer 1-5
+      "review": "Great!"    // Optional, string
+    }
+    
+    Response: {
+      "status": "success",
+      "message": "Driver rated successfully",
+      "data": {
+        "rating": 5,
+        "review": "Great!"
+      }
+    }
+
+--------------------------------------------------------------------------------
+
+50. RATE RIDER (By Driver)
+    PATCH http://172.20.10.2:8000/api/v1/driver/rides/{rideId}/rate
+    
+    Headers:
+    Authorization: Bearer {driver_token}
+    Content-Type: application/json
+    
+    Body:
+    {
+      "rating": 5,          // Required, integer 1-5
+      "review": "Polite"    // Optional, string
+    }
+    
+    Response: {
+      "status": "success",
+      "message": "Rider rated successfully",
+      "data": {
+        "rating": 5,
+        "review": "Polite"
+      }
+    }
+
+
+
+================================================================================
                               ERROR CODES
 ================================================================================
 
@@ -1726,5 +1853,5 @@
 8. Standard ride booking uses PATCH for driver actions (accept, cancel, start, complete)
 
 ================================================================================
-                        LAST UPDATED: April 24, 2026
+                        LAST UPDATED: April 29, 2026
 ================================================================================

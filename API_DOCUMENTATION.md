@@ -1,7 +1,7 @@
 # EasyGo API Documentation
 
-**Base URL:** `http://localhost:8000`  
-**Last Updated:** April 20, 2026
+**Base URL:** `http://172.20.10.2:8000`  
+**Last Updated:** April 29, 2026
 
 ---
 
@@ -289,11 +289,27 @@ GET /api/v1/driver/statistics
 {
   "status": "success",
   "data": {
-    "total_trips": 150,
-    "total_earnings": 45000.00,
-    "wallet_balance": 12000.00,
-    "average_rating": 4.8,
-    "completion_rate": 95.5
+    "earnings": {
+        "total_earnings": 45000.00,
+        "wallet_balance": 12000.00,
+        "total_withdrawn": 33000.00,
+        "available_balance": 12000.00
+    },
+    "trips": {
+        "total_trips": 150,
+        "completed_trips": 142,
+        "cancelled_trips": 8,
+        "completion_rate": 94.67,
+        "cancellation_rate": 5.33
+    },
+    "rating": {
+        "average_rating": 4.85
+    },
+    "activity": {
+        "total_online_minutes": 5400,
+        "total_online_hours": 90,
+        "last_trip_at": "2025-04-15 12:30:00"
+    }
   }
 }
 ```
@@ -418,6 +434,7 @@ GET /api/v1/rider/profile
     "profile_photo": "http://localhost:8000/storage/profile_photos/riders/xxxxx.jpg",
     "gender": "male",
     "date_of_birth": "1995-05-15",
+    "rating": 4.92,
     "is_active": true,
     "created_at": "2025-04-01 10:00:00"
   }
@@ -635,8 +652,75 @@ POST /api/v1/rider/rides/{rideId}/cancel
 
 ## Common APIs
 
-### 43. Get Recent Searches (Rider Only)
-*(See #34)*
+---
+
+## Rider Statistics APIs
+
+### 43. Get Rider Statistics
+```
+GET /api/v1/rider/statistics
+```
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "spending": {
+        "total_spent": 5000.00,
+        "wallet_balance": 150.00,
+        "total_refunded": 0.00
+    },
+    "trips": {
+        "total_trips": 12,
+        "completed_trips": 10,
+        "cancelled_trips": 2,
+        "completion_rate": 83.33
+    },
+    "rating": {
+        "average_rating": 4.92
+    },
+    "last_ride_at": "2026-04-29 10:00:00",
+    "updated_at": "2026-04-29 12:00:00"
+  }
+}
+```
+
+---
+
+### 44. Get Rider Dashboard Summary
+```
+GET /api/v1/rider/statistics/dashboard
+```
+
+---
+
+## Ride Rating APIs (New)
+
+### 45. Rate Driver (By Rider)
+```
+PATCH /api/v1/rider/rides/{rideId}/rate
+```
+**Body:**
+```json
+{
+  "rating": 5,
+  "review": "Great!"
+}
+```
+
+---
+
+### 46. Rate Rider (By Driver)
+```
+PATCH /api/v1/driver/rides/{rideId}/rate
+```
+**Body:**
+```json
+{
+  "rating": 5,
+  "review": "Polite"
+}
+```
 
 ---
 

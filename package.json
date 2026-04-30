@@ -6,7 +6,7 @@
         "build": "vite build",
         "dev": "concurrently \"vite\" \"php artisan serve --host 0.0.0.0 --port 8000\"",
         "prod": "npm run build && php artisan serve --host 0.0.0.0 --port 8000",
-        "share": "npm run build && php artisan serve --host 0.0.0.0 --port 8000"
+        "share": "npm run build && php artisan serve --host 0.0.0.0 --port 8000 "
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.2.2",

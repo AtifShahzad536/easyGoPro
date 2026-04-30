@@ -305,4 +305,52 @@ class DriverRideController extends Controller
             'data' => $rides,
         ]);
     }
+
+    /**
+     * PATCH /api/v1/driver/rides/{rideId}/rate
+     * Rate the rider after a completed ride
+     */
+    public function rateRide(Request $request, $rideId): JsonResponse
+    {
+        $driver = auth()->user();
+
+        $validator = Validator::make($request->all(), [
+            'rating' => 'required|integer|min:1|max:5',
+            'review' => 'nullable|string|max:500',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $ride = Ride::where('id', $rideId)
+            ->where('driver_id', $driver->id)
+            ->where('status', 'completed')
+            ->first();
+
+        if (!$ride) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Ride not found or not completed yet',
+            ], 404);
+        }
+
+        $ride->update([
+            'rider_rating' => $request->rating,
+            'rider_review' => $request->review,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Rider rated successfully',
+            'data' => [
+                'rating' => $ride->rider_rating,
+                'review' => $ride->rider_review,
+            ]
+        ]);
+    }
 }

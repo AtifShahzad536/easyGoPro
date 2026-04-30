@@ -28,6 +28,11 @@ class DriverStatisticController extends Controller
         }
 
         $statistics = $driver->statistics;
+        
+        // Calculate real-time average rating from completed rides
+        $averageRating = \App\Models\Ride::where('driver_id', $driver->id)
+            ->whereNotNull('driver_rating')
+            ->avg('driver_rating') ?? 0;
 
         if (!$statistics) {
             return response()->json([
@@ -64,7 +69,7 @@ class DriverStatisticController extends Controller
                     'cancellation_rate' => $cancellationRate,
                 ],
                 'rating' => [
-                    'average_rating' => $statistics->average_rating,
+                    'average_rating' => round($averageRating, 2),
                 ],
                 'activity' => [
                     'total_online_minutes' => $statistics->total_online_minutes,
@@ -109,7 +114,7 @@ class DriverStatisticController extends Controller
                     'today_earnings' => 0, // Can be updated with daily tracking
                     'today_trips' => 0,
                     'wallet_balance' => $statistics->wallet_balance,
-                    'average_rating' => $statistics->average_rating,
+                    'average_rating' => round(\App\Models\Ride::where('driver_id', $driver->id)->whereNotNull('driver_rating')->avg('driver_rating') ?? 0, 2),
                 ],
                 'overall_performance' => [
                     'total_earnings' => $statistics->total_earnings,

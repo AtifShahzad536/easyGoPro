@@ -318,6 +318,54 @@ class RideBookingController extends Controller
     }
 
     /**
+     * PATCH /api/v1/rider/rides/{rideId}/rate
+     * Rate the driver after a completed ride
+     */
+    public function rateRide(Request $request, $rideId): JsonResponse
+    {
+        $rider = auth()->user();
+
+        $validator = Validator::make($request->all(), [
+            'rating' => 'required|integer|min:1|max:5',
+            'review' => 'nullable|string|max:500',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $ride = Ride::where('id', $rideId)
+            ->where('rider_id', $rider->id)
+            ->where('status', 'completed')
+            ->first();
+
+        if (!$ride) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Ride not found or not completed yet',
+            ], 404);
+        }
+
+        $ride->update([
+            'driver_rating' => $request->rating,
+            'driver_review' => $request->review,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Driver rated successfully',
+            'data' => [
+                'rating' => $ride->driver_rating,
+                'review' => $ride->driver_review,
+            ]
+        ]);
+    }
+
+    /**
      * Helper: Calculate estimated fare
      */
     private function calculateFare(Request $request): float

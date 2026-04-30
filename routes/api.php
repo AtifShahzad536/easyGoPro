@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\Driver\DriverRideController;
 use App\Http\Controllers\Api\Rider\RiderProfileController;
 use App\Http\Controllers\Api\Rider\RiderLocationController;
 use App\Http\Controllers\Api\Rider\RideBookingController;
+use App\Http\Controllers\Api\Rider\RiderStatisticController;
 
 // Common API Controllers
 use App\Http\Controllers\Api\Common\LocationController;
@@ -116,6 +117,7 @@ Route::middleware('auth:sanctum')->prefix('v1/driver')->group(function () {
         Route::patch('/{rideId}/cancel', [DriverRideController::class, 'cancelRide']);
         Route::patch('/{rideId}/start', [DriverRideController::class, 'startRide']);
         Route::patch('/{rideId}/complete', [DriverRideController::class, 'completeRide']);
+        Route::patch('/{rideId}/rate', [DriverRideController::class, 'rateRide']);
     });
 });
 
@@ -169,6 +171,14 @@ Route::middleware('auth:sanctum')->prefix('v1/rider')->group(function () {
     Route::get('/place-details/{place_id}', [RiderLocationController::class, 'getPlaceDetails']);
 
     // ─────────────────────────────────────────────────────────────────
+    // Rider Statistics
+    // ─────────────────────────────────────────────────────────────────
+    Route::prefix('/statistics')->group(function () {
+        Route::get('/', [RiderStatisticController::class, 'getMyStatistics']);
+        Route::get('/dashboard', [RiderStatisticController::class, 'getDashboardSummary']);
+    });
+
+    // ─────────────────────────────────────────────────────────────────
     // Ride Booking (with Stops - Max 4)
     // ─────────────────────────────────────────────────────────────────
     Route::post('/estimate-fare', [RideBookingController::class, 'estimateFare']);
@@ -178,4 +188,5 @@ Route::middleware('auth:sanctum')->prefix('v1/rider')->group(function () {
     Route::get('/rides/history', [RideBookingController::class, 'getRideHistory']);
     Route::get('/rides/{rideId}', [RideBookingController::class, 'getRideDetails']);
     Route::post('/rides/{rideId}/cancel', [RideBookingController::class, 'cancelRide']);
+    Route::patch('/rides/{rideId}/rate', [RideBookingController::class, 'rateRide']);
 });
