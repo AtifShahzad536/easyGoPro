@@ -3,14 +3,16 @@
 namespace App\Http\Controllers\Admin\Finance;
 
 use App\Http\Controllers\Controller;
+use Exception;
 
 class PayoutController extends Controller
 {
-    /**
-     * Display all payouts.
-     */
     public function index()
     {
-        return view('admin.finance.payouts.index');
+        try {
+            return view('admin.finance.payouts.index');
+        } catch (Exception $e) {
+            return back()->with('error', 'Unable to load payouts.');
+        }
     }
 }

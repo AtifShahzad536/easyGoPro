@@ -3,14 +3,16 @@
 namespace App\Http\Controllers\Admin\Settings;
 
 use App\Http\Controllers\Controller;
+use Exception;
 
 class PromotionController extends Controller
 {
-    /**
-     * Display all promotions.
-     */
     public function index()
     {
-        return view('admin.settings.promotions.index');
+        try {
+            return view('admin.settings.promotions.index');
+        } catch (Exception $e) {
+            return back()->with('error', 'Unable to load promotions.');
+        }
     }
 }

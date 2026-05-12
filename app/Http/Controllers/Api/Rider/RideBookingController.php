@@ -9,512 +9,628 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Exception;
 
 class RideBookingController extends Controller
 {
-    public function __construct()
-    {
-        $this->middleware('auth:sanctum');
-    }
-
     /**
      * POST /api/v1/rider/estimate-fare
-     * Get fare estimates for all vehicle types before booking
+     * Estimate fare for standard or two-way ride
      */
     public function estimateFare(Request $request): JsonResponse
     {
-        $rider = auth()->user();
+        try {
+            $request->merge([
+                'booking_type' => $request->booking_type ?? 'standard',
+            ]);
 
-        $validator = Validator::make($request->all(), [
-            // Pickup location
-            'pickup.latitude' => 'required|numeric|between:-90,90',
-            'pickup.longitude' => 'required|numeric|between:-180,180',
+            $rules = [
+                'booking_type' => 'required|string|in:standard,two_way',
+            ];
+
+            if ($request->booking_type === 'two_way') {
+                $rules = array_merge($rules, [
+                    'go_trip.pickup' => 'required|array',
+                    'go_trip.destination' => 'required|array',
+                    'go_trip.distance' => 'nullable',
+                    'return_trip.pickup' => 'required|array',
+                    'return_trip.destination' => 'required|array',
+                    'return_trip.distance' => 'nullable',
+                ]);
+            } else {
+                $rules = array_merge($rules, [
+                    'pickup' => 'required|array',
+                    'destination' => 'required|array',
+                    'distance' => 'nullable',
+                    'time' => 'nullable',
+                    'stops' => 'nullable|array',
+                ]);
+            }
+
+            $validator = Validator::make($request->all(), $rules);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            // --- Multi-Vehicle Configuration ---
+            $vehicleConfigs = [
+                [
+                    'type' => 'bike',
+                    'name' => 'Bike',
+                    'capacity' => 1,
+                    'base_fare' => 30,
+                    'per_km' => 8,
+                    'eta_minutes' => 3
+                ],
+                [
+                    'type' => 'economy',
+                    'name' => 'Economy Car',
+                    'capacity' => 4,
+                    'base_fare' => 80,
+                    'per_km' => 25,
+                    'eta_minutes' => 4
+                ],
+                [
+                    'type' => 'auto',
+                    'name' => 'Auto',
+                    'capacity' => 4,
+                    'base_fare' => 60,
+                    'per_km' => 20,
+                    'eta_minutes' => 4
+                ],
+                [
+                    'type' => 'business',
+                    'name' => 'Comfort Car',
+                    'capacity' => 4,
+                    'base_fare' => 150,
+                    'per_km' => 40,
+                    'eta_minutes' => 6
+                ]
+            ];
+
+            if ($request->booking_type === 'two_way') {
+                // Two-way logic: Summing up estimates for both trips
+                $options = [];
+                foreach ($vehicleConfigs as $config) {
+                    $goFare = $this->calculateDetailedFare($config, $request->go_trip);
+                    $returnFare = $this->calculateDetailedFare($config, $request->return_trip);
+                    
+                    $subTotal = $goFare['estimated'] + $returnFare['estimated'];
+                    $discount = $subTotal * 0.10;
+
+                    $options[] = [
+                        'type' => $config['type'],
+                        'name' => $config['name'],
+                        'capacity' => $config['capacity'],
+                        'fare' => [
+                            'estimated' => round($subTotal - $discount),
+                            'go_trip_fare' => $goFare['estimated'],
+                            'return_trip_fare' => $returnFare['estimated'],
+                            'sub_total' => $subTotal,
+                            'discount' => round($discount),
+                        ],
+                        'eta_minutes' => $config['eta_minutes'],
+                        'is_available' => true
+                    ];
+                }
+
+                return response()->json([
+                    'status' => 'success',
+                    'data' => [
+                        'booking_type' => 'two_way',
+                        'vehicle_options' => $options,
+                        'currency' => 'PKR'
+                    ]
+                ]);
+            }
+
+            // Standard Logic: Multi-vehicle options
+            $distance = (float)($request->distance ?? 0);
+            $totalStops = $request->has('stops') ? count($request->stops) : 0;
             
-            // Destination location
-            'destination.latitude' => 'required|numeric|between:-90,90',
-            'destination.longitude' => 'required|numeric|between:-180,180',
-            'distance' => 'required|numeric|',
-            'time' =>'required|numeric|',
-            
-            // Optional stops (max 4)
-            'stops' => 'nullable|array|max:4',
-            'stops.*.latitude' => 'required_with:stops|numeric|between:-90,90',
-            'stops.*.longitude' => 'required_with:stops|numeric|between:-180,180',
-        ],[
+            $options = [];
+            foreach ($vehicleConfigs as $config) {
+                $fareDetails = $this->calculateDetailedFare($config, $request->all());
+                
+                $options[] = [
+                    'type' => $config['type'],
+                    'name' => $config['name'],
+                    'capacity' => $config['capacity'],
+                    'fare' => $fareDetails,
+                    'eta_minutes' => $config['eta_minutes'],
+                    'is_available' => true
+                ];
+            }
 
-            'distance.numeric' => 'Distance must be a valid number',
-            'time.numeric' => 'Time must be a valid number',
-            'stops.max' => 'Maximum 4 stops allowed',
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'distance_km' => $distance,
+                    'duration_minutes' => (int)($request->time ?? 0),
+                    'total_stops' => $totalStops,
+                    'max_stops_allowed' => 4,
+                    'vehicle_options' => $options
+                ]
+            ]);
 
-        ]);
-
-        if ($validator->fails()) {
+        } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Validation failed',
-                'errors' => $validator->errors(),
-            ], 422);
+                'message' => 'Fare estimation failed: ' . $e->getMessage()
+            ], 500);
         }
+    }
 
-        // Calculate distance (mock for now - integrate Google Distance Matrix API)
-        // Add stops distance
-        $stopsCount = $request->has('stops') ? count($request->stops) : 0;
+    private function calculateDetailedFare($config, $data)
+    {
+        $distance = (float)($data['distance'] ?? 0);
+        $stopsData = $data['stops'] ?? [];
+        $totalStops = (is_array($stopsData) || $stopsData instanceof \Countable) ? count($stopsData) : 0;
         
-        // Calculate fares for all vehicle types
-        $estimates = $this->getAllVehicleEstimates($request->distance, $stopsCount);
+        $baseFare = $config['base_fare'];
+        $distanceFare = $distance * $config['per_km'];
+        $stopCharges = $totalStops * 20; // 20 PKR per stop
+        
+        $estimated = $baseFare + $distanceFare + $stopCharges;
 
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'distance_km' => round($request->distance, 2),
-                'duration_minutes' => round($request->distance * 3), // Mock: 3 min per km
-                'total_stops' => $stopsCount,
-                'max_stops_allowed' => 4,
-                'vehicle_options' => $estimates,
-            ],
-        ]);
+        return [
+            'estimated' => round($estimated),
+            'base_fare' => $baseFare,
+            'distance_fare' => round($distanceFare, 2),
+            'stop_charges' => $stopCharges,
+            'surge_multiplier' => 1
+        ];
     }
 
     /**
      * POST /api/v1/rider/standard-book-ride
-     * Book a standard ride with pickup, destination and optional stops (max 4)
+     * Book a new ride with optional multiple stops
      */
     public function standardBookRide(Request $request): JsonResponse
     {
-        $rider = auth()->user();
-
-        $validator = Validator::make($request->all(), [
-            // Pickup location
-            'pickup.place_name' => 'required|string|max:255',
-            'pickup.latitude' => 'required|numeric|between:-90,90',
-            'pickup.longitude' => 'required|numeric|between:-180,180',
-            
-            // Destination location
-            'destination.place_name' => 'required|string|max:255',
-            'destination.latitude' => 'required|numeric|between:-90,90',
-            'destination.longitude' => 'required|numeric|between:-180,180',
-            
-            // Ride distance and time
-            'distance' => 'required|numeric|min:0',
-            'duration' => 'required|numeric|min:0',
-            
-            // Optional stops (max 4)
-            'stops' => 'nullable|array|max:4',
-            'stops.*.place_name' => 'required_with:stops|string|max:255',
-            'stops.*.latitude' => 'required_with:stops|numeric|between:-90,90',
-            'stops.*.longitude' => 'required_with:stops|numeric|between:-180,180',
-            
-            // Ride details
-            'ride_type' => 'required|in:bike,auto,economy,business,car_pool',
-            'payment_method' => 'required|in:cash',
-            'estimate_fare' => 'required|numeric|min:0',
-        ], [
-            'pickup.place_name.required' => 'Pickup place name is required',
-            'pickup.latitude.required' => 'Pickup latitude is required',
-            'pickup.longitude.required' => 'Pickup longitude is required',
-            'destination.place_name.required' => 'Destination place name is required',
-            'destination.latitude.required' => 'Destination latitude is required',
-            'destination.longitude.required' => 'Destination longitude is required',
-            'distance.required' => 'Distance is required',
-            'duration.required' => 'Duration is required',
-            'ride_type.required' => 'Ride type is required',
-            'ride_type.in' => 'Invalid ride type. Must be bike, auto, economy, business, or car_pool',
-            'payment_method.required' => 'Payment method is required',
-            'estimate_fare.required' => 'Estimated fare is required',
-            'stops.max' => 'Maximum 4 stops allowed',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Validation failed',
-                'errors' => $validator->errors(),
-            ], 422);
-        }
-
         try {
+            $validator = Validator::make($request->all(), [
+                'pickup.place_name' => 'required_without:pickup.address|string',
+                'pickup.latitude' => 'required|numeric',
+                'pickup.longitude' => 'required|numeric',
+                'destination.place_name' => 'required_without:destination.address|string',
+                'destination.latitude' => 'required|numeric',
+                'destination.longitude' => 'required|numeric',
+                'ride_type' => 'required|string|in:bike,auto,economy,business,car_pool',
+                'payment_method' => 'required|string|in:cash,wallet,card',
+                'distance' => 'nullable|numeric',
+                'duration' => 'nullable|numeric',
+                'time' => 'nullable|numeric',
+                'estimate_fare' => 'nullable|numeric',
+                'stops' => 'nullable|array|max:4',
+                'stops.*.place_name' => 'required_without:stops.*.address|string',
+                'stops.*.latitude' => 'required|numeric',
+                'stops.*.longitude' => 'required|numeric',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $rider = auth()->user();
+
+            /* 
+            // Commenting out the active ride check to allow multiple bookings or re-booking after cancellation
+            $activeRide = Ride::where('rider_id', $rider->id)
+                ->whereIn('status', ['searching', 'accepted', 'ongoing', 'driver_arrived'])
+                ->first();
+
+            if ($activeRide) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'You already have an active ride request.'
+                ], 403);
+            }
+            */
+
             return DB::transaction(function () use ($request, $rider) {
-                // Create the ride
+                // Determine duration and fare
+                $duration = $request->duration ?? $request->time ?? 0;
+                $fare = $request->estimate_fare ?? $this->calculateEstimatedFare($request->all());
+
                 $ride = Ride::create([
                     'rider_id' => $rider->id,
-                    'driver_id' => null, // Will be assigned later
-                    'pickup_place_name' => $request->pickup['place_name'],
+                    'pickup_place_name' => $request->pickup['place_name'] ?? $request->pickup['address'],
                     'pickup_lat' => $request->pickup['latitude'],
                     'pickup_lng' => $request->pickup['longitude'],
-                    'destination_place_name' => $request->destination['place_name'],
+                    'destination_place_name' => $request->destination['place_name'] ?? $request->destination['address'],
                     'destination_lat' => $request->destination['latitude'],
                     'destination_lng' => $request->destination['longitude'],
-                    'status' => 'searching',
                     'ride_type' => $request->ride_type,
                     'payment_method' => $request->payment_method,
-                    'estimated_fare' => $request->estimate_fare,
+                    'status' => 'searching',
+                    'estimated_fare' => $fare,
                     'distance_km' => $request->distance,
-                    'duration_minutes' => $request->duration,
+                    'duration_minutes' => $duration,
                 ]);
 
-                // Add stops if any
-                if ($request->has('stops') && count($request->stops) > 0) {
+                // Handle Multiple Stops
+                if ($request->has('stops') && !empty($request->stops)) {
                     foreach ($request->stops as $index => $stop) {
                         RideStop::create([
                             'ride_id' => $ride->id,
-                            'stop_order' => $index + 1,
-                            'place_name' => $stop['place_name'],
+                            'place_name' => $stop['place_name'] ?? $stop['address'],
                             'latitude' => $stop['latitude'],
                             'longitude' => $stop['longitude'],
-                            'status' => 'pending',
+                            'stop_order' => $index + 1,
                         ]);
                     }
                 }
 
-                // Load stops relation
-                $ride->load('stops');
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Ride booked successfully. Searching for nearby drivers.',
+                    'data' => ['ride_id' => $ride->id, 'ride' => $ride->load('stops')]
+                ]);
+            });
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to book ride: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 
-                // Broadcast the ride request to drivers
-                \App\Events\RideRequested::dispatch($ride);
+    /**
+     * POST /api/v1/rider/two-way-ride
+     * Book a round-trip ride
+     */
+    public function bookTwoWayRide(Request $request): JsonResponse
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'go_trip.pickup.address' => 'required|string',
+                'go_trip.pickup.latitude' => 'required|numeric',
+                'go_trip.pickup.longitude' => 'required|numeric',
+                'go_trip.destination.address' => 'required|string',
+                'go_trip.destination.latitude' => 'required|numeric',
+                'go_trip.destination.longitude' => 'required|numeric',
+                'go_trip.date' => 'required|date|after_or_equal:today',
+                'go_trip.time' => 'required|string',
+                
+                'return_trip.pickup.address' => 'required|string',
+                'return_trip.pickup.latitude' => 'required|numeric',
+                'return_trip.pickup.longitude' => 'required|numeric',
+                'return_trip.destination.address' => 'required|string',
+                'return_trip.destination.latitude' => 'required|numeric',
+                'return_trip.destination.longitude' => 'required|numeric',
+                'return_trip.date' => 'required|date|after_or_equal:go_trip.date',
+                'return_trip.time' => 'required|string',
+                
+                'ride_type' => 'required|string|in:bike,auto,economy,business',
+                'payment_method' => 'required|string|in:cash,wallet,card',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $rider = auth()->user();
+
+            // Check if rider already has an active ride
+            $activeRide = Ride::where('rider_id', $rider->id)
+                ->whereIn('status', ['searching', 'accepted', 'ongoing'])
+                ->first();
+
+            if ($activeRide) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'You already have an active ride request.'
+                ], 403);
+            }
+
+            return DB::transaction(function () use ($request, $rider) {
+                // 1. Create Forward Ride
+                $goScheduledAt = date('Y-m-d H:i:s', strtotime($request->go_trip['date'] . ' ' . $request->go_trip['time']));
+                
+                $goRide = Ride::create([
+                    'rider_id' => $rider->id,
+                    'pickup_place_name' => $request->go_trip['pickup']['address'],
+                    'pickup_lat' => $request->go_trip['pickup']['latitude'],
+                    'pickup_lng' => $request->go_trip['pickup']['longitude'],
+                    'destination_place_name' => $request->go_trip['destination']['address'],
+                    'destination_lat' => $request->go_trip['destination']['latitude'],
+                    'destination_lng' => $request->go_trip['destination']['longitude'],
+                    'ride_type' => $request->ride_type,
+                    'payment_method' => $request->payment_method,
+                    'booking_type' => 'two_way',
+                    'scheduled_at' => $goScheduledAt,
+                    'status' => 'scheduled',
+                    'estimated_fare' => $this->calculateEstimatedFare($request->go_trip),
+                    'is_return' => false,
+                ]);
+
+                // 2. Create Return Ride
+                $returnScheduledAt = date('Y-m-d H:i:s', strtotime($request->return_trip['date'] . ' ' . $request->return_trip['time']));
+                
+                $returnRide = Ride::create([
+                    'rider_id' => $rider->id,
+                    'pickup_place_name' => $request->return_trip['pickup']['address'],
+                    'pickup_lat' => $request->return_trip['pickup']['latitude'],
+                    'pickup_lng' => $request->return_trip['pickup']['longitude'],
+                    'destination_place_name' => $request->return_trip['destination']['address'],
+                    'destination_lat' => $request->return_trip['destination']['latitude'],
+                    'destination_lng' => $request->return_trip['destination']['longitude'],
+                    'ride_type' => $request->ride_type,
+                    'payment_method' => $request->payment_method,
+                    'booking_type' => 'two_way',
+                    'scheduled_at' => $returnScheduledAt,
+                    'status' => 'scheduled',
+                    'estimated_fare' => $this->calculateEstimatedFare($request->return_trip),
+                    'is_return' => true,
+                    'linked_ride_id' => $goRide->id,
+                ]);
+
+                // 3. Link Forward to Return
+                $goRide->update(['linked_ride_id' => $returnRide->id]);
 
                 return response()->json([
                     'status' => 'success',
-                    'message' => 'Ride booked successfully',
+                    'message' => 'Two-way ride booked successfully.',
                     'data' => [
-                        'ride_id' => $ride->id,
-                        'ride' => $ride,
-                        'total_stops' => $ride->stops->count(),
-                        'max_stops' => 4,
-                        'status' => 'searching_driver',
-                        'estimated_fare' => $ride->estimated_fare,
-                    ],
-                ], 201);
+                        'go_ride_id' => $goRide->id,
+                        'return_ride_id' => $returnRide->id,
+                        'go_ride' => $goRide,
+                        'return_ride' => $returnRide
+                    ]
+                ]);
             });
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to book ride: ' . $e->getMessage(),
+                'message' => 'Failed to book two-way ride: ' . $e->getMessage()
             ], 500);
         }
     }
 
     /**
      * GET /api/v1/rider/rides
-     * Get all rides for rider
+     * Get all rides for the authenticated rider
      */
     public function getRides(Request $request): JsonResponse
     {
-        $rider = auth()->user();
+        try {
+            $rider = auth()->user();
+            $rides = Ride::where('rider_id', $rider->id)
+                ->with(['driver', 'stops'])
+                ->latest()
+                ->get();
 
-        $status = $request->query('status'); // Optional: filter by status
-
-        $query = Ride::with(['driver', 'stops'])
-            ->where('rider_id', $rider->id);
-
-        if ($status) {
-            $query->where('status', $status);
+            return response()->json([
+                'status' => 'success',
+                'data' => $rides
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Failed to fetch rides.'], 500);
         }
-
-        $rides = $query->latest()->get();
-
-        return response()->json([
-            'status' => 'success',
-            'data' => $rides,
-        ]);
     }
 
     /**
      * GET /api/v1/rider/rides/active
-     * Get active ride for rider
+     * Main polling endpoint for rider to check ride status and driver details
      */
     public function getActiveRide(Request $request): JsonResponse
     {
-        $rider = auth()->user();
+        try {
+            $rider = auth()->user();
 
-        $ride = Ride::with(['driver', 'stops'])
-            ->where('rider_id', $rider->id)
-            ->whereIn('status', ['searching', 'accepted', 'ongoing'])
-            ->first();
+            $ride = Ride::with(['driver', 'stops'])
+                ->where('rider_id', $rider->id)
+                ->whereIn('status', ['searching', 'accepted', 'ongoing', 'driver_arrived'])
+                ->first();
 
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'ride' => $ride,
-                'has_active_ride' => $ride !== null,
-            ],
-        ]);
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'has_active_ride' => $ride !== null,
+                    'ride' => $ride,
+                ],
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error checking active ride status.'
+            ], 500);
+        }
     }
 
     /**
      * GET /api/v1/rider/rides/history
-     * Get rider's ride history (completed/cancelled)
+     * Get completed/cancelled rides history
      */
     public function getRideHistory(Request $request): JsonResponse
     {
-        $rider = auth()->user();
+        try {
+            $rider = auth()->user();
+            $rides = Ride::where('rider_id', $rider->id)
+                ->whereIn('status', ['completed', 'cancelled'])
+                ->with(['driver', 'stops'])
+                ->latest()
+                ->get();
 
-        $rides = Ride::with(['driver', 'stops'])
-            ->where('rider_id', $rider->id)
-            ->whereIn('status', ['completed', 'cancelled'])
-            ->latest()
-            ->get();
-
-        return response()->json([
-            'status' => 'success',
-            'data' => $rides,
-        ]);
+            return response()->json([
+                'status' => 'success',
+                'data' => $rides
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Failed to fetch history.'], 500);
+        }
     }
 
     /**
      * GET /api/v1/rider/rides/{rideId}
-     * Get ride details with stops
+     * Get specific ride details
      */
     public function getRideDetails($rideId): JsonResponse
     {
-        $rider = auth()->user();
+        try {
+            $rider = auth()->user();
+            $ride = Ride::with(['driver', 'stops'])
+                ->where('id', $rideId)
+                ->where('rider_id', $rider->id)
+                ->first();
 
-        $ride = Ride::with(['stops', 'driver'])
-            ->where('id', $rideId)
-            ->where('rider_id', $rider->id)
-            ->first();
+            if (!$ride) {
+                return response()->json(['status' => 'error', 'message' => 'Ride not found.'], 404);
+            }
 
-        if (!$ride) {
             return response()->json([
-                'status' => 'error',
-                'message' => 'Ride not found',
-            ], 404);
+                'status' => 'success',
+                'data' => $ride
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Error fetching ride details.'], 500);
         }
-
-        return response()->json([
-            'status' => 'success',
-            'data' => $ride,
-        ]);
     }
 
     /**
-     * POST /api/v1/rider/rides/{rideId}/cancel
-     * Cancel a ride
+     * PATCH /api/v1/rider/rides/{rideId}/cancel
+     * Rider cancels the ride
      */
     public function cancelRide($rideId): JsonResponse
     {
-        $rider = auth()->user();
+        try {
+            $rider = auth()->user();
 
-        $ride = Ride::where('id', $rideId)
-            ->where('rider_id', $rider->id)
-            ->whereIn('status', ['searching', 'accepted'])
-            ->first();
+            $ride = Ride::where('id', $rideId)
+                ->where('rider_id', $rider->id)
+                ->whereIn('status', ['searching', 'accepted', 'driver_arrived'])
+                ->first();
 
-        if (!$ride) {
+            if (!$ride) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Ride not found or cannot be cancelled at this stage.',
+                ], 404);
+            }
+
+            return DB::transaction(function () use ($ride) {
+                $ride->update([
+                    'status' => 'cancelled',
+                    'cancelled_at' => now(),
+                    'cancelled_by' => 'rider'
+                ]);
+
+                // If a driver was assigned, free them up
+                if ($ride->driver_id) {
+                    $ride->driver()->update([
+                        'status' => 'online',
+                        'is_available' => true,
+                    ]);
+                }
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Ride cancelled successfully.',
+                ]);
+            });
+        } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Ride not found or cannot be cancelled',
-            ], 404);
+                'message' => 'Failed to cancel ride.',
+                'error' => config('app.debug') ? $e->getMessage() : null
+            ], 500);
         }
-
-        $ride->update(['status' => 'cancelled']);
-
-        // Broadcast cancellation so driver app removes it
-        \App\Events\RideCancelled::dispatch($ride);
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Ride cancelled successfully',
-        ]);
     }
 
     /**
      * PATCH /api/v1/rider/rides/{rideId}/rate
-     * Rate the driver after a completed ride
+     * Rider rates the driver
      */
     public function rateRide(Request $request, $rideId): JsonResponse
     {
-        $rider = auth()->user();
+        try {
+            $validator = Validator::make($request->all(), [
+                'rating' => 'required|integer|min:1|max:5',
+                'review' => 'nullable|string|max:500',
+            ]);
 
-        $validator = Validator::make($request->all(), [
-            'rating' => 'required|integer|min:1|max:5',
-            'review' => 'nullable|string|max:500',
-        ]);
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid rating data.',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
 
-        if ($validator->fails()) {
+            $rider = auth()->user();
+            $ride = Ride::where('id', $rideId)
+                ->where('rider_id', $rider->id)
+                ->where('status', 'completed')
+                ->first();
+
+            if (!$ride) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Completed ride not found to rate.',
+                ], 404);
+            }
+
+            $ride->update([
+                'driver_rating' => $request->rating,
+                'driver_review' => $request->review,
+            ]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Driver rated successfully.',
+            ]);
+        } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Validation failed',
-                'errors' => $validator->errors(),
-            ], 422);
+                'message' => 'Failed to submit rating.'
+            ], 500);
         }
-
-        $ride = Ride::where('id', $rideId)
-            ->where('rider_id', $rider->id)
-            ->where('status', 'completed')
-            ->first();
-
-        if (!$ride) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Ride not found or not completed yet',
-            ], 404);
-        }
-
-        $ride->update([
-            'driver_rating' => $request->rating,
-            'driver_review' => $request->review,
-        ]);
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Driver rated successfully',
-            'data' => [
-                'rating' => $ride->driver_rating,
-                'review' => $ride->driver_review,
-            ]
-        ]);
     }
 
-    /**
-     * Helper: Calculate estimated fare
-     */
-    private function calculateFare(Request $request): float
+    private function calculateEstimatedFare($data)
     {
-        $distanceKm = $this->calculateDistance(
-            $request->pickup['latitude'],
-            $request->pickup['longitude'],
-            $request->destination['latitude'],
-            $request->destination['longitude']
-        );
+        $rideType = $data['ride_type'] ?? 'bike';
+        $distance = (float)($data['distance'] ?? 0);
         
-        $stopsCount = $request->has('stops') ? count($request->stops) : 0;
-        
-        return $this->calculateFareForVehicle($request->ride_type, $distanceKm, $stopsCount);
-    }
+        $stopsData = $data['stops'] ?? [];
+        $totalStops = (is_array($stopsData) || $stopsData instanceof \Countable) ? count($stopsData) : 0;
 
-    /**
-     * Helper: Calculate distance between two points (Haversine formula)
-     * TODO: Replace with Google Distance Matrix API for accurate road distance
-     */
-    private function calculateDistance(float $lat1, float $lng1, float $lat2, float $lng2): float
-    {
-        $earthRadius = 6371; // km
-
-        $latDelta = deg2rad($lat2 - $lat1);
-        $lngDelta = deg2rad($lng2 - $lng1);
-
-        $a = sin($latDelta / 2) * sin($latDelta / 2) +
-            cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
-            sin($lngDelta / 2) * sin($lngDelta / 2);
-
-        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
-
-        return $earthRadius * $c;
-    }
-
-    /**
-     * Helper: Get fare estimates for all vehicle types
-     */
-    private function getAllVehicleEstimates(float $distanceKm, int $stopsCount): array
-    {
-        $vehicles = [
-            [
-                'type' => 'bike',
-                'name' => 'Bike',
-                'capacity' => 1,
-                'base_fare' => 30,
-                'per_km_rate' => 8,
-               
-            ],
-            [
-                'type' => 'auto',
-                'name' => 'Auto',
-                'capacity' => 3,
-                'base_fare' => 50,
-                'per_km_rate' => 15,
-                
-            ],
-            [
-                'type' => 'economy',
-                'name' => 'Economy Car',
-                'capacity' => 4,
-                'base_fare' => 80,
-                'per_km_rate' => 25,
-                
-            ],
-            [
-                'type' => 'business',
-                'name' => 'Comfort Car',
-                'capacity' => 4,
-                'base_fare' => 150,
-                'per_km_rate' => 40,
-           
-
-            ],
-            [
-                'type' => 'car_pool',
-                'name' => 'Carpool',
-                'capacity' => 4,
-                'base_fare' => 40,
-                'per_km_rate' => 12,
-                
-            ],
-        ];
-
-        $estimates = [];
-        foreach ($vehicles as $vehicle) {
-            $distanceFare = $distanceKm * $vehicle['per_km_rate'];
-            $stopCharges = $stopsCount * 20; // Rs. 20 per stop
-            $totalFare = $vehicle['base_fare'] + $distanceFare + $stopCharges;
-            
-            // Surge pricing (mock - can be dynamic based on demand)
-            $surgeMultiplier = 1.0;
-            $finalFare = round($totalFare * $surgeMultiplier);
-
-            $estimates[] = [
-                'type' => $vehicle['type'],
-                'name' => $vehicle['name'],
-                'capacity' => $vehicle['capacity'],
-                
-                'fare' => [
-                    'estimated' => $finalFare,
-                    'base_fare' => $vehicle['base_fare'],
-                    'distance_fare' => round($distanceFare, 2),
-                    'stop_charges' => $stopCharges,
-                    'surge_multiplier' => $surgeMultiplier,
-                ],
-                'eta_minutes' => $this->calculateETA($vehicle['type']),
-                'is_available' => true, // Can check vehicle availability
-            ];
-        }
-
-        return $estimates;
-    }
-
-    /**
-     * Helper: Calculate fare for specific vehicle type
-     */
-    private function calculateFareForVehicle(string $rideType, float $distanceKm, int $stopsCount): float
-    {
+        // Rates Configuration
         $rates = [
-            'bike' => ['base' => 30, 'per_km' => 8],
-            'auto' => ['base' => 50, 'per_km' => 15],
-            'economy' => ['base' => 80, 'per_km' => 25],
+            'bike'     => ['base' => 30,  'per_km' => 8],
+            'auto'     => ['base' => 60,  'per_km' => 20],
+            'economy'  => ['base' => 80,  'per_km' => 25],
             'business' => ['base' => 150, 'per_km' => 40],
-            'car_pool' => ['base' => 40, 'per_km' => 12],
+            'car_pool' => ['base' => 50,  'per_km' => 15],
         ];
 
-        $rate = $rates[$rideType] ?? $rates['economy'];
-        $distanceFare = $distanceKm * $rate['per_km'];
-        $stopCharges = $stopsCount * 20;
+        $config = $rates[$rideType] ?? $rates['bike'];
+        
+        $baseFare = $config['base'];
+        $distanceFare = $distance * $config['per_km'];
+        $stopCharges = $totalStops * 20;
 
-        return round($rate['base'] + $distanceFare + $stopCharges);
-    }
+        $total = $baseFare + $distanceFare + $stopCharges;
 
-    /**
-     * Helper: Calculate ETA for vehicle type (mock)
-     * TODO: Get real ETA from nearby drivers
-     */
-    private function calculateETA(string $vehicleType): int
-    {
-        $etas = [
-            'bike' => 3,
-            'auto' => 5,
-            'economy' => 4,
-            'business' => 6,
-            'car_pool' => 8,
-        ];
+        // If no distance is provided, use a reasonable default
+        if ($distance <= 0) {
+            return 450.00;
+        }
 
-        return $etas[$vehicleType] ?? 5;
+        return round($total);
     }
 }

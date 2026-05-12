@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin\RideManagement;
 
 use App\Http\Controllers\Controller;
+use Exception;
 
 class ScheduledRideController extends Controller
 {
@@ -11,6 +12,10 @@ class ScheduledRideController extends Controller
      */
     public function index()
     {
-        return view('admin.rides.scheduled.index');
+        try {
+            return view('admin.rides.scheduled.index');
+        } catch (Exception $e) {
+            return back()->with('error', 'Unable to load scheduled rides.');
+        }
     }
 }

@@ -7,10 +7,13 @@
 .env
 .env.backup
 .env.production
+.env.local
+.env.*.local
 .phpunit.result.cache
 docker-compose.override.yml
 proxy.crt
 proxy.key
+auth.json
 
 # Laravel-specific
 /storage/framework/cache/data/*
@@ -18,12 +21,19 @@ proxy.key
 /storage/framework/views/*
 /storage/framework/testing/*
 /storage/logs/*
+/storage/debugbar/
+_ide_helper.php
+_ide_helper_models.php
+.phpstorm.meta.php
+php_errors.log
 
 # IDEs and System
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+*.sublime-project
+*.sublime-workspace
 .project/
 .gemini/
 
@@ -33,12 +43,19 @@ Thumbs.db
 /database/*.sqlite-shm
 /database/*.sqlite-wal
 
-# Compiled assets
-mix-manifest.json
+# Lock files (Optional: Some prefer to commit these, but kept here as per existing config)
 package-lock.json
 yarn.lock
+pnpm-lock.yaml
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
 # Temporary files
 *.tmp
 *.bak
 *.swp
+SeleniumScreenshot.html

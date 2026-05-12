@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Admin\UserManagement;
 use App\Http\Controllers\Controller;
 use App\Models\Driver;
 use Illuminate\Http\Request;
+use Exception;
+use Illuminate\Support\Facades\Log;
 
 class DriverController extends Controller
 {
@@ -13,11 +15,16 @@ class DriverController extends Controller
      */
     public function index()
     {
-        $drivers = Driver::with(['documents', 'vehicle', 'statistics'])
-            ->latest()
-            ->paginate(15);
-        
-        return view('admin.users.drivers.index', compact('drivers'));
+        try {
+            $drivers = Driver::with(['documents', 'vehicle', 'statistics'])
+                ->latest()
+                ->paginate(15);
+            
+            return view('admin.users.drivers.index', compact('drivers'));
+        } catch (Exception $e) {
+            Log::error('Admin Driver Index Error: ' . $e->getMessage());
+            return back()->with('error', 'Unable to load drivers list.');
+        }
     }
 
     /**
@@ -25,8 +32,12 @@ class DriverController extends Controller
      */
     public function show(Driver $driver)
     {
-        $driver->load(['documents', 'vehicle', 'statistics']);
-        return view('admin.users.drivers.show', compact('driver'));
+        try {
+            $driver->load(['documents', 'vehicle', 'statistics']);
+            return view('admin.users.drivers.show', compact('driver'));
+        } catch (Exception $e) {
+            return back()->with('error', 'Driver details not found.');
+        }
     }
 
     /**
@@ -34,10 +45,12 @@ class DriverController extends Controller
      */
     public function suspend(Driver $driver)
     {
-        $driver->status = 'suspended';
-        $driver->save();
-
-        return redirect()->route('drivers.index')->with('success', 'Driver suspended successfully.');
+        try {
+            $driver->update(['status' => 'suspended']);
+            return redirect()->route('drivers.index')->with('success', 'Driver suspended successfully.');
+        } catch (Exception $e) {
+            return back()->with('error', 'Failed to suspend driver.');
+        }
     }
 
     /**
@@ -45,29 +58,16 @@ class DriverController extends Controller
      */
     public function activate(Driver $driver)
     {
-        $driver->status = 'offline';
-        $driver->save();
-
-        return redirect()->route('drivers.index')->with('success', 'Driver activated successfully.');
+        try {
+            $driver->update(['status' => 'offline']);
+            return redirect()->route('drivers.index')->with('success', 'Driver activated successfully.');
+        } catch (Exception $e) {
+            return back()->with('error', 'Failed to activate driver.');
+        }
     }
 
     /**
-     * Update driver KYC status.
-     */
-    public function updateKycStatus(Request $request, Driver $driver)
-    {
-        $request->validate([
-            'kyc_status' => 'required|in:pending,verified,rejected'
-        ]);
-
-        $driver->kyc_status = $request->kyc_status;
-        $driver->save();
-
-        return redirect()->route('drivers.index')->with('success', 'KYC status updated successfully.');
-    }
-
-    /**
-     * Update driver details via AJAX.
+     * Update driver details (AJAX/Post)
      */
     public function update(Request $request, Driver $driver)
     {
@@ -79,16 +79,10 @@ class DriverController extends Controller
                 'kyc_status' => 'required|in:pending,in_review,approved,rejected',
             ]);
 
-            $driver->full_name = $request->full_name;
-            $driver->mobile_number = $request->mobile_number;
-            $driver->status = $request->status;
-            $driver->kyc_status = $request->kyc_status;
-            $driver->save();
+            $driver->update($request->only(['full_name', 'mobile_number', 'status', 'kyc_status']));
 
-            // Update vehicle model if provided
             if ($request->has('vehicle_model') && $driver->vehicle) {
-                $driver->vehicle->model = $request->vehicle_model;
-                $driver->vehicle->save();
+                $driver->vehicle->update(['model' => $request->vehicle_model]);
             }
 
             return response()->json([
@@ -96,15 +90,10 @@ class DriverController extends Controller
                 'message' => 'Driver updated successfully',
                 'driver' => $driver->load(['vehicle'])
             ]);
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Database error: ' . $e->getMessage()
-            ], 500);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage()
+                'message' => 'Update failed: ' . $e->getMessage()
             ], 500);
         }
     }

@@ -15,22 +15,15 @@ class Ride extends Model
         'rider_id',
         'driver_id',
         'pickup_place_name',
-        'pickup_address',
-        'pickup_full_address',
         'pickup_lat',
         'pickup_lng',
-        'pickup_place_id',
         'destination_place_name',
-        'destination_address',
-        'destination_full_address',
         'destination_lat',
         'destination_lng',
-        'destination_place_id',
         'ride_type',
         'status',
         'payment_method',
         'payment_status',
-        'scheduled_at',
         'accepted_at',
         'driver_arrived_at',
         'started_at',
@@ -48,6 +41,10 @@ class Ride extends Model
         'rider_review',
         'driver_rating',
         'driver_review',
+        'booking_type',
+        'scheduled_at',
+        'linked_ride_id',
+        'is_return',
     ];
 
     protected $casts = [
@@ -59,12 +56,13 @@ class Ride extends Model
         'final_fare' => 'decimal:2',
         'discount' => 'decimal:2',
         'distance_km' => 'decimal:2',
-        'scheduled_at' => 'datetime',
         'accepted_at' => 'datetime',
         'driver_arrived_at' => 'datetime',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'scheduled_at' => 'datetime',
+        'is_return' => 'boolean',
     ];
 
     public function rider(): BelongsTo
@@ -80,6 +78,11 @@ class Ride extends Model
     public function stops(): HasMany
     {
         return $this->hasMany(RideStop::class)->orderBy('stop_order');
+    }
+
+    public function linkedRide(): BelongsTo
+    {
+        return $this->belongsTo(Ride::class, 'linked_ride_id');
     }
 
     // Scope for active rides

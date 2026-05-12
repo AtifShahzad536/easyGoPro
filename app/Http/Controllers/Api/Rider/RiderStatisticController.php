@@ -3,14 +3,15 @@
 namespace App\Http\Controllers\Api\Rider;
 
 use App\Http\Controllers\Controller;
-use App\Models\Rider;
-use App\Models\Ride;
+use App\Traits\RideMetricsTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
+use Exception;
 
 class RiderStatisticController extends Controller
 {
+    use RideMetricsTrait;
+
     public function __construct()
     {
         $this->middleware('auth:sanctum');
@@ -21,55 +22,48 @@ class RiderStatisticController extends Controller
      */
     public function getMyStatistics(Request $request): JsonResponse
     {
-        $rider = $request->user();
+        try {
+            $rider = $request->user();
 
-        if (!$rider) {
+            if (!$rider) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Unauthorized access.'
+                ], 401);
+            }
+
+            $rideStats = $this->getRealTimeMetrics($rider->id, 'rider');
+            $statistics = $rider->statistics;
+
+            $totalTrips = (int)($rideStats->total_trips ?? 0);
+            $completedTrips = (int)($rideStats->completed_trips ?? 0);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'spending' => [
+                        'total_spent' => (float)($rideStats->total_amount ?? 0),
+                        'wallet_balance' => (float)($statistics->wallet_balance ?? 0),
+                        'total_refunded' => (float)($statistics->total_refunded ?? 0),
+                    ],
+                    'trips' => [
+                        'total_trips' => $totalTrips,
+                        'completed_trips' => $completedTrips,
+                        'cancelled_trips' => (int)($rideStats->cancelled_trips ?? 0),
+                        'completion_rate' => $totalTrips > 0 ? round(($completedTrips / $totalTrips) * 100, 2) : 0,
+                    ],
+                    'rating' => [
+                        'average_rating' => round((float)($rideStats->average_rating ?? 0), 2),
+                    ],
+                    'last_ride_at' => $statistics->last_ride_at ?? null,
+                ]
+            ]);
+        } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Rider not authenticated'
-            ], 401);
+                'message' => 'Unable to fetch statistics at this time.'
+            ], 500);
         }
-
-        $statistics = $rider->statistics;
-        
-        // Calculate real-time average rating from completed rides
-        $averageRating = Ride::where('rider_id', $rider->id)
-            ->whereNotNull('rider_rating')
-            ->avg('rider_rating') ?? 0;
-
-        if (!$statistics) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Statistics not found for this rider'
-            ], 404);
-        }
-
-        // Calculate additional metrics
-        $completionRate = $statistics->total_trips > 0
-            ? round(($statistics->completed_trips / $statistics->total_trips) * 100, 2)
-            : 0;
-
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'spending' => [
-                    'total_spent' => $statistics->total_spent,
-                    'wallet_balance' => $statistics->wallet_balance,
-                    'total_refunded' => $statistics->total_refunded,
-                ],
-                'trips' => [
-                    'total_trips' => $statistics->total_trips,
-                    'completed_trips' => $statistics->completed_trips,
-                    'cancelled_trips' => $statistics->cancelled_trips,
-                    'completion_rate' => $completionRate,
-                ],
-                'rating' => [
-                    'average_rating' => round($averageRating, 2),
-                ],
-                'last_ride_at' => $statistics->last_ride_at,
-                'updated_at' => $statistics->updated_at,
-            ]
-        ]);
     }
 
     /**
@@ -77,38 +71,38 @@ class RiderStatisticController extends Controller
      */
     public function getDashboardSummary(Request $request): JsonResponse
     {
-        $rider = $request->user();
+        try {
+            $rider = $request->user();
 
-        if (!$rider) {
+            if (!$rider) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Rider not found.'
+                ], 401);
+            }
+
+            $rideStats = $this->getRealTimeMetrics($rider->id, 'rider');
+
             return response()->json([
-                'status' => 'error',
-                'message' => 'Rider not authenticated'
-            ], 401);
-        }
-
-        $statistics = $rider->statistics;
-
-        if (!$statistics) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Statistics not found'
-            ], 404);
-        }
-
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'quick_stats' => [
-                    'total_trips' => $statistics->total_trips,
-                    'wallet_balance' => $statistics->wallet_balance,
-                    'average_rating' => round(Ride::where('rider_id', $rider->id)->whereNotNull('rider_rating')->avg('rider_rating') ?? 0, 2),
-                ],
-                'rider_info' => [
-                    'full_name' => $rider->full_name,
-                    'mobile_number' => $rider->mobile_number,
-                    'is_active' => $rider->is_active,
+                'status' => 'success',
+                'data' => [
+                    'quick_stats' => [
+                        'total_trips' => (int)($rideStats->total_trips ?? 0),
+                        'wallet_balance' => (float)($rider->statistics->wallet_balance ?? 0),
+                        'average_rating' => round((float)($rideStats->average_rating ?? 0), 2),
+                    ],
+                    'rider_info' => [
+                        'full_name' => $rider->full_name,
+                        'mobile_number' => $rider->mobile_number,
+                        'is_active' => (bool)$rider->is_active,
+                    ]
                 ]
-            ]
-        ]);
+            ]);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error loading dashboard summary.'
+            ], 500);
+        }
     }
 }

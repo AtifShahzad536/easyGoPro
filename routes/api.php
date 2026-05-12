@@ -82,7 +82,7 @@ Route::middleware('auth:sanctum')->prefix('v1/driver')->group(function () {
     Route::put('/status', [DriverStatusController::class, 'updateStatus']);
 
     Route::get('/location', [LocationController::class, 'getLocation']);
-    Route::post('/location/update', [LocationController::class, 'updateLocation']);
+    Route::put('/location/update', [LocationController::class, 'updateLocation']);
 
     // ─────────────────────────────────────────────────────────────────
     // Statistics
@@ -105,22 +105,26 @@ Route::middleware('auth:sanctum')->prefix('v1/driver')->group(function () {
         Route::post('/cancel/{rideId}', [CarpoolController::class, 'cancelRide']);
         Route::delete('/delete/{rideId}', [CarpoolController::class, 'deleteRide']);
     });
+    
+    
 
     // ─────────────────────────────────────────────────────────────────
     // Standard Ride Management
     // ─────────────────────────────────────────────────────────────────
     Route::prefix('/rides')->group(function () {
         Route::get('/available', [DriverRideController::class, 'getAvailableRides']);
+        Route::get('/scheduled', [DriverRideController::class, 'getScheduledRides']);
         Route::get('/current', [DriverRideController::class, 'getCurrentRide']);
         Route::get('/history', [DriverRideController::class, 'getRideHistory']);
         Route::patch('/{rideId}/accept', [DriverRideController::class, 'acceptRide']);
+        Route::patch('/{rideId}/decline', [DriverRideController::class, 'declineRide']);
+        Route::patch('/{rideId}/arrived', [DriverRideController::class, 'arrivedAtPickup']);
         Route::patch('/{rideId}/cancel', [DriverRideController::class, 'cancelRide']);
         Route::patch('/{rideId}/start', [DriverRideController::class, 'startRide']);
         Route::patch('/{rideId}/complete', [DriverRideController::class, 'completeRide']);
         Route::patch('/{rideId}/rate', [DriverRideController::class, 'rateRide']);
     });
 });
-
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // RIDER PROTECTED ROUTES
@@ -137,7 +141,7 @@ Route::middleware('auth:sanctum')->prefix('v1/rider')->group(function () {
     // Location & Nearby
     // ─────────────────────────────────────────────────────────────────
     Route::get('/location', [LocationController::class, 'getLocation']);
-    Route::post('/location/update', [LocationController::class, 'updateLocation']);
+    Route::put('/location/update', [LocationController::class, 'updateLocation']);
     Route::get('/drivers/nearby', [LocationController::class, 'findNearbyDrivers']);
 
     // ─────────────────────────────────────────────────────────────────
@@ -183,10 +187,11 @@ Route::middleware('auth:sanctum')->prefix('v1/rider')->group(function () {
     // ─────────────────────────────────────────────────────────────────
     Route::post('/estimate-fare', [RideBookingController::class, 'estimateFare']);
     Route::post('/standard-book-ride', [RideBookingController::class, 'standardBookRide']);
+    Route::post('/two-way-ride', [RideBookingController::class, 'bookTwoWayRide']);
     Route::get('/rides', [RideBookingController::class, 'getRides']);
     Route::get('/rides/active', [RideBookingController::class, 'getActiveRide']);
     Route::get('/rides/history', [RideBookingController::class, 'getRideHistory']);
     Route::get('/rides/{rideId}', [RideBookingController::class, 'getRideDetails']);
-    Route::post('/rides/{rideId}/cancel', [RideBookingController::class, 'cancelRide']);
+    Route::patch('/rides/{rideId}/cancel', [RideBookingController::class, 'cancelRide']);
     Route::patch('/rides/{rideId}/rate', [RideBookingController::class, 'rateRide']);
 });

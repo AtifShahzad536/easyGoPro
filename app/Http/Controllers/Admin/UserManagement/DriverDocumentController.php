@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Driver;
 use App\Models\DriverDocument;
 use Illuminate\Http\Request;
+use Exception;
+use Illuminate\Support\Facades\Log;
 
 class DriverDocumentController extends Controller
 {
@@ -14,12 +16,17 @@ class DriverDocumentController extends Controller
      */
     public function index()
     {
-        $documents = DriverDocument::with(['driver'])
-            ->where('status', 'pending')
-            ->latest()
-            ->paginate(20);
-        
-        return view('admin.users.documents.index', compact('documents'));
+        try {
+            $documents = DriverDocument::with(['driver'])
+                ->where('status', 'pending')
+                ->latest()
+                ->paginate(20);
+            
+            return view('admin.users.documents.index', compact('documents'));
+        } catch (Exception $e) {
+            Log::error('Admin Document Index Error: ' . $e->getMessage());
+            return back()->with('error', 'Failed to load documents.');
+        }
     }
 
     /**
@@ -27,8 +34,12 @@ class DriverDocumentController extends Controller
      */
     public function showByDriver(Driver $driver)
     {
-        $documents = $driver->documents;
-        return view('admin.users.documents.show', compact('driver', 'documents'));
+        try {
+            $documents = $driver->documents;
+            return view('admin.users.documents.show', compact('driver', 'documents'));
+        } catch (Exception $e) {
+            return back()->with('error', 'Documents not found for this driver.');
+        }
     }
 
     /**
@@ -36,17 +47,22 @@ class DriverDocumentController extends Controller
      */
     public function approve($id)
     {
-        $document = DriverDocument::findOrFail($id);
-        $document->update([
-            'status' => 'verified',
-            'rejection_reason' => null
-        ]);
+        try {
+            $document = DriverDocument::findOrFail($id);
+            $document->update([
+                'status' => 'verified',
+                'rejection_reason' => null
+            ]);
 
-        if (request()->expectsJson() || request()->ajax()) {
-            return response()->json(['success' => true, 'message' => 'Document approved successfully.']);
+            $message = 'Document approved successfully.';
+            if (request()->expectsJson() || request()->ajax()) {
+                return response()->json(['status' => 'success', 'message' => $message]);
+            }
+
+            return back()->with('success', $message);
+        } catch (Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Approval failed.'], 500);
         }
-
-        return back()->with('success', 'Document approved successfully.');
     }
 
     /**
@@ -54,20 +70,25 @@ class DriverDocumentController extends Controller
      */
     public function reject(Request $request, $id)
     {
-        $request->validate([
-            'reason' => 'required|string|max:500',
-        ]);
+        try {
+            $request->validate([
+                'reason' => 'required|string|max:500',
+            ]);
 
-        $document = DriverDocument::findOrFail($id);
-        $document->update([
-            'status' => 'rejected',
-            'rejection_reason' => $request->reason
-        ]);
+            $document = DriverDocument::findOrFail($id);
+            $document->update([
+                'status' => 'rejected',
+                'rejection_reason' => $request->reason
+            ]);
 
-        if ($request->expectsJson() || $request->ajax()) {
-            return response()->json(['success' => true, 'message' => 'Document rejected.']);
+            $message = 'Document rejected with reason.';
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['status' => 'success', 'message' => $message]);
+            }
+
+            return back()->with('success', $message);
+        } catch (Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Rejection failed.'], 500);
         }
-
-        return back()->with('success', 'Document rejected.');
     }
 }

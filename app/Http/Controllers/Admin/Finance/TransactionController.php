@@ -3,14 +3,16 @@
 namespace App\Http\Controllers\Admin\Finance;
 
 use App\Http\Controllers\Controller;
+use Exception;
 
 class TransactionController extends Controller
 {
-    /**
-     * Display all transactions.
-     */
     public function index()
     {
-        return view('admin.finance.transactions.index');
+        try {
+            return view('admin.finance.transactions.index');
+        } catch (Exception $e) {
+            return back()->with('error', 'Unable to load transactions.');
+        }
     }
 }

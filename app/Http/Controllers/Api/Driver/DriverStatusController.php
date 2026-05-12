@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Throwable;
 
+use App\Models\UserLocation;
+
 class DriverStatusController extends Controller
 {
     /**

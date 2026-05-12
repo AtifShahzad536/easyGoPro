@@ -5,29 +5,25 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Models\Driver;
 use Illuminate\Http\Request;
-use Illuminate\View\View;
+use Exception;
 
 class DriverStatusController extends Controller
 {
     /**
-     * Display driver status page.
-     *
-     * @return View
+     * Display drivers online/offline status dashboard
      */
-    public function index(): View
+    public function index()
     {
-        $drivers = Driver::select('id', 'full_name', 'email', 'mobile_number', 'status', 'is_available', 'current_lat', 'current_lng')
-            ->with('vehicle:id,driver_id,type')
-            ->orderBy('full_name')
-            ->get();
+        try {
+            $onlineDrivers = Driver::where('status', 'online')->count();
+            $offlineDrivers = Driver::where('status', 'offline')->count();
+            $onTripDrivers = Driver::where('status', 'on_trip')->count();
+            
+            $drivers = Driver::latest()->paginate(20);
 
-        $stats = [
-            'total' => $drivers->count(),
-            'online' => $drivers->where('is_available', true)->count(),
-            'offline' => $drivers->where('is_available', false)->count(),
-            'busy' => $drivers->where('status', 'busy')->count(),
-        ];
-
-        return view('admin.driver-status.index', compact('drivers', 'stats'));
+            return view('admin.driver-status.index', compact('onlineDrivers', 'offlineDrivers', 'onTripDrivers', 'drivers'));
+        } catch (Exception $e) {
+            return back()->with('error', 'Failed to load driver status dashboard.');
+        }
     }
 }
